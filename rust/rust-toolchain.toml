@@ -1,0 +1,11 @@
+# Exact, never a range and never auto-detected.
+#
+# Every repository in this project pins the same Rust release. A toolchain that
+# moves under a suite turns "the SDK broke" and "the compiler moved" into the
+# same red run, and the first person to see it cannot tell which happened. The
+# version here is `toolchains.rust` in ../pins.json; the two are meant to be
+# changed in one commit.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

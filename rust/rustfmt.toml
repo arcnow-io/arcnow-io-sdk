@@ -1,0 +1,7 @@
+# The house style, identical to arcnow-io/e2e-tests/rustfmt.toml. Shared
+# formatting across the project's Rust is worth more than any one preference in
+# it: a diff should show what changed, never where someone's editor disagreed.
+edition = "2024"
+style_edition = "2024"
+max_width = 100
+use_small_heuristics = "Max"

@@ -1,0 +1,55 @@
+{
+  "name": "@arcnow/sdk",
+  "version": "0.1.1",
+  "description": "Launch, trade and read arcnow.io bonding-curve tokens on Arc, straight from JSON-RPC. No arcnow.io backend required.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
+    "example": "npm run build && node --experimental-strip-types examples/launch-and-trade.ts",
+    "preflight": "npm run typecheck && npm run lint && npm run build && npm test"
+  },
+  "dependencies": {
+    "viem": "^2.56.3"
+  },
+  "devDependencies": {
+    "@stylistic/eslint-plugin": "^5.10.0",
+    "@types/node": "^22.10.2",
+    "eslint": "^10.10.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.70.0",
+    "vitest": "^5.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arcnow-io/arcnow-io-sdk.git"
+  },
+  "homepage": "https://github.com/arcnow-io/arcnow-io-sdk",
+  "bugs": {
+    "url": "https://github.com/arcnow-io/arcnow-io-sdk/issues"
+  },
+  "author": "arcnow.io"
+}

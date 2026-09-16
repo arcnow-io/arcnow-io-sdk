@@ -1,0 +1,248 @@
+{
+  "$comment": [
+    "Network presets for the arcnow.io SDKs. THE single source of truth for",
+    "both languages: scripts/sync-artifacts.sh copies this file into",
+    "rust/src/generated/ and typescript/src/generated/, and scripts/check-pins.sh",
+    "fails when a copy has drifted. Two SDKs that each carried their own address",
+    "list would eventually disagree about one address, in one language, on one",
+    "chain, and nothing would say which was right.",
+    "",
+    "WHAT IS NOT IN THIS FILE. No deployer, fee-recipient or custodian address:",
+    "those are operational identities, not integration surface, and an SDK that",
+    "published them would be inviting callers to depend on them. No per-token",
+    "addresses either - a token and its curve come from the Launched log, one",
+    "pair per launch, and there are as many as there have been launches. No",
+    "third-party platforms: those arrive on PlatformRegistry.PlatformRegistered.",
+    "",
+    "NULL MEANS 'NOT DEPLOYED ON THIS CHAIN'. It is not the zero address, which",
+    "on Arc is a real account that would send money nowhere at all. Both SDKs",
+    "refuse to build a call to a null address and say which contract was missing.",
+    "",
+    "ONE STACK PER NETWORK (schemaVersion 4). `contracts` is the network's arcnow.io stack. Both SDKs price",
+    "only the multi-quote curve (arcnow/bonding-curve@3.x.x) and trade only under the claim-based fee hook",
+    "(arcnow/arc-now-fee-hook@3.x.x); any other version is refused by name rather than priced or traded.",
+    "`contractVersions` names the build at each address, key for key. `contracts.v4Router` is",
+    "UniswapV4Router04, bound to `v4.poolManager`; neither is arcnow.io's code.",
+    "",
+    "WHILE pins.json contracts.deployment.status IS 'pending', the addresses below are the version-2",
+    "stack that is still live, recorded because they must equal the deployment record, and both SDKs",
+    "refuse them. The multi-quote stack replaces this block when it is broadcast.",
+    "",
+    "QUOTE TOKENS (`quoteTokens`). What a curve can be priced in: native USDC (address 0x000...000, the",
+    "gas currency, 18 decimals) and the ERC-20s arcnow.io's quote registry allowlists. This list is",
+    "METADATA, not the allowlist: the SDKs read symbol, name and decimals from here so that labelling an",
+    "amount costs no RPC call, and they ask the registry (QuoteRegistry.isQuoteToken) whether a quote is",
+    "actually accepted. A quote the registry lists and this file does not is read on chain once per",
+    "process. `native: true` marks the one quote paid as msg.value; every other quote is pulled with an",
+    "ERC-20 allowance, in raw units of its own decimals."
+  ],
+  "schemaVersion": 4,
+  "networks": {
+    "arc-testnet": {
+      "name": "arc-testnet",
+      "chainId": 5042002,
+      "rpcUrl": "https://rpc.testnet.arc.io",
+      "explorerUrl": null,
+      "$explorerComment": "Left null rather than guessed. Nothing in arcnow-io/contracts or arcnow-io/deployment names an explorer for Arc testnet, and a wrong link in an error message is worse than none.",
+      "deployedAtBlock": 62226550,
+      "$deployedAtBlockComment": "The block the multi-quote stack was deployed in, as arcnow-io/contracts exports/addresses.json records it. The version-2 stack it replaced was deployed at 61,911,405.",
+      "contractsCommit": "327f45b4763ab7f2ba5fc8cc0426b3d02e63f816",
+      "native": {
+        "$comment": "Arc's gas currency IS USDC, and msg.value is 18 decimals. See nativeUsdc in both SDKs.",
+        "symbol": "USDC",
+        "decimals": 18
+      },
+      "usdcErc20": {
+        "$comment": "The SAME asset through an ERC-20 interface, reporting 6 decimals. It does NOT pay for gas and no arcnow.io contract reads it. Present here only so a wallet-facing UI can convert; the scale between the two is 1e12.",
+        "address": "0x3600000000000000000000000000000000000000",
+        "decimals": 6
+      },
+      "quoteTokens": [
+        {
+          "address": "0x0000000000000000000000000000000000000000",
+          "symbol": "USDC",
+          "name": "USD Coin",
+          "decimals": 18,
+          "native": true
+        },
+        {
+          "address": "0x89b50855aa3be2f677cd6303cec089b5f319d72a",
+          "symbol": "EURC",
+          "name": "EURC",
+          "decimals": 6,
+          "native": false,
+          "allowanceSlot": 10
+        }
+      ],
+      "$quoteTokensComment": [
+        "EURC is Circle's euro stablecoin on Arc testnet: a FiatToken proxy reporting 6 decimals,",
+        "blocklistable and pausable by Circle. Its symbol and decimals are read back off the chain by",
+        "scripts/check-template.sh. Whether the registry accepts it is the registry's answer, not this",
+        "file's: EURC is registered on the deployed stack with a 2 EURC launch fee, and its admin can",
+        "deactivate it at any time, so both SDKs ask the registry rather than trust this list.",
+        "",
+        "allowanceSlot is the storage slot of the token's allowance mapping (FiatToken's `allowed`, 10).",
+        "Both SDKs use it ONLY to state-override the router's allowance when pricing a pool buy with eth_call.",
+        "Verified 2026-09-14 by reading an override of that slot back through allowance() on rpc.testnet.arc.io,",
+        "and re-verified on every run of the TypeScript fork suite."
+      ],
+      "contracts": {
+        "launchpad": "0x3e4f0291f5e3ed7f8da839903e2984e6d69b1240",
+        "tokenFactory": "0xcc8d53c589e8eba2cd920cc1adb127662d4d2a2c",
+        "curveFactory": "0x4c016f2a6c4f9918bd6d18c3ad85d516c7e2c769",
+        "migratorRegistry": "0x799f5e4f00193f9ae4aa73535c455898269f48a8",
+        "platformRegistry": "0xd265496c0f4e7948db1813196993430eb54eb42c",
+        "quoteRegistry": "0x72405d10551d3e27a899dc3119cb356cb27bb9b3",
+        "arcnowPlatform": "0xa78b737da5758250cc95097425d3d3ba534ea47a",
+        "escrowMigrator": null,
+        "v2Migrator": null,
+        "v3Migrator": null,
+        "v4Migrator": "0xff0df62faec3767393b053ec37a238e7a9df0219",
+        "feeHook": "0xed68b7b5fb6995de0014d9a07b467e011f47a0cc",
+        "v4Router": "0x139166ee61bb560ff34f05ae4a2b666ad98b9b2e"
+      },
+      "$contractsComment": [
+        "arcnowPlatform is arcnow.io's OWN PlatformConfig - one platform among however",
+        "many the registry admits, and the default this SDK launches under when a caller",
+        "names no other. It is not privileged; it is just the one whose address is known",
+        "before you have read a log.",
+        "",
+        "escrowMigrator is null and that is the better state: it is the one custodial",
+        "contract in the system, and arcnow-io/contracts deploys it only on a chain where",
+        "no venue migrator could be built. Arc testnet has a v4 venue, so none exists.",
+        "",
+        "v2Migrator and v3Migrator are null because both need a wrapped-native token that",
+        "Arc testnet does not publish and arcnow-io/contracts refuses to default.",
+        "",
+        "quoteRegistry is the registry this stack was deployed with. Both SDKs prefer this address,",
+        "and otherwise ask the launchpad for it (Launchpad.quoteTokenRegistry(), immutable)."
+      ],
+      "contractVersions": {
+        "launchpad": "arcnow/launchpad@3.0.0",
+        "tokenFactory": "arcnow/token-factory@1.0.0",
+        "curveFactory": "arcnow/curve-factory@3.0.0",
+        "migratorRegistry": "arcnow/migrator-registry@1.1.0",
+        "platformRegistry": "arcnow/platform-registry@3.0.0",
+        "quoteRegistry": "arcnow/quote-registry@1.0.0",
+        "arcnowPlatform": "arcnow/platform-config@3.0.0",
+        "escrowMigrator": null,
+        "v2Migrator": null,
+        "v3Migrator": null,
+        "v4Migrator": "arcnow/uniswap-v4-migrator@2.0.0",
+        "feeHook": "arcnow/arc-now-fee-hook@3.0.0",
+        "v4Router": null
+      },
+      "v4": {
+        "$comment": [
+          "WHERE A GRADUATED TOKEN IS TRADED.",
+          "",
+          "poolManager is the Uniswap v4 PoolManager arcnow.io's migrator opens pools in. It is",
+          "genuine Uniswap v4 - the v4-core commit arcnow-io/contracts pins, compiled at",
+          "optimizer_runs 200 - and every token that has graduated has its liquidity there,",
+          "permanently: the positions are burned and the migrator is immutable. A v4 pool has",
+          "no address of its own; it is a PoolId inside this manager's storage.",
+          "",
+          "Arc testnet also has a second, separate PoolManager (0x9BEACCac...) with a",
+          "third-party router bound to it. arcnow.io does NOT use either. Moving to that manager",
+          "would never have made the tokens already graduated here tradeable, and would have split",
+          "liquidity across two disjoint markets. Instead arcnow.io deploys its own copy of the",
+          "same router - UniswapV4Router04 from z0r0z/v4-router, unmodified - bound to this",
+          "manager. Its address is contracts.v4Router, null until it is broadcast.",
+          "",
+          "While contracts.v4Router is null, both SDKs REFUSE to quote or trade a graduated token",
+          "rather than build a call to nothing. Once it is set they ask the router which",
+          "PoolManager it serves and trade only pools in that one.",
+          "",
+          "NO QUOTER IS DEPLOYED ON THIS CHAIN. Both SDKs quote by eth_call-ing the router itself",
+          "with state overrides and reading the BalanceDelta it returns, which is the trader's own",
+          "delta with the hook's 1% already applied. sdk/README.md documents the method."
+        ],
+        "poolManager": "0x06110b57dd9b82DD846ee0325fB81B284E1C6dD0"
+      },
+      "venues": {
+        "$comment": "Which graduation targets this deployment actually offers. A token graduates into the migrator its curve snapshotted at launch; ask the curve, not this list, for a particular token.",
+        "escrow": false,
+        "uniswapV2": false,
+        "uniswapV3": false,
+        "uniswapV4": true
+      }
+    },
+    "arc-mainnet": {
+      "$comment": [
+        "ARC MAINNET DOES NOT EXIST YET, or at least arcnow.io is not on it. Every",
+        "address below is null ON PURPOSE and this entry is here ON PURPOSE.",
+        "",
+        "A preset that is absent gets a caller a 'no such network' error they read as",
+        "'the SDK is behind' and work around by pasting addresses from somewhere. A",
+        "preset with plausible addresses in it gets them a transaction to an account",
+        "that does not exist. A preset that is present, complete in shape and null in",
+        "every address gets them an error that says exactly what is true: nothing is",
+        "deployed here, pass your own addresses if you know better.",
+        "",
+        "Both SDKs therefore RESOLVE this network and REFUSE to use it, naming the",
+        "contracts that are missing. Nobody invents an address to fill it in: when",
+        "arcnow.io deploys to a mainnet, the values arrive here from the deployment",
+        "record, with the contracts commit that produced them."
+      ],
+      "name": "arc-mainnet",
+      "chainId": null,
+      "rpcUrl": null,
+      "explorerUrl": null,
+      "deployedAtBlock": null,
+      "contractsCommit": null,
+      "native": {
+        "symbol": "USDC",
+        "decimals": 18
+      },
+      "usdcErc20": {
+        "address": null,
+        "decimals": 6
+      },
+      "quoteTokens": [
+        {
+          "address": "0x0000000000000000000000000000000000000000",
+          "symbol": "USDC",
+          "name": "USD Coin",
+          "decimals": 18,
+          "native": true
+        }
+      ],
+      "contracts": {
+        "launchpad": null,
+        "tokenFactory": null,
+        "curveFactory": null,
+        "migratorRegistry": null,
+        "platformRegistry": null,
+        "quoteRegistry": null,
+        "arcnowPlatform": null,
+        "escrowMigrator": null,
+        "v2Migrator": null,
+        "v3Migrator": null,
+        "v4Migrator": null,
+        "feeHook": null,
+        "v4Router": null
+      },
+      "contractVersions": {
+        "launchpad": null,
+        "tokenFactory": null,
+        "curveFactory": null,
+        "migratorRegistry": null,
+        "platformRegistry": null,
+        "quoteRegistry": null,
+        "arcnowPlatform": null,
+        "escrowMigrator": null,
+        "v2Migrator": null,
+        "v3Migrator": null,
+        "v4Migrator": null,
+        "feeHook": null,
+        "v4Router": null
+      },
+      "venues": {
+        "escrow": false,
+        "uniswapV2": false,
+        "uniswapV3": false,
+        "uniswapV4": false
+      }
+    }
+  }
+}

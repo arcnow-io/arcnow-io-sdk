@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "moduleDetection": "force",
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "useUnknownInCatchVariables": true,
+
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+
+    // The example imports "@arcnow/sdk" by name, the way a consumer does. At
+    // run time Node resolves that through this package's own `exports` to
+    // dist/, which is why `npm run example` builds first. Here it is pointed at
+    // the source, so the type check never depends on a build having happened.
+    "paths": { "@arcnow/sdk": ["./src/index.ts"] },
+
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.json", "test/**/*.ts", "examples/**/*.ts", "*.config.ts"]
+}

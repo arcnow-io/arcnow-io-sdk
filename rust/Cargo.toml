@@ -1,0 +1,51 @@
+[package]
+name = "arcnow-sdk"
+authors = ["arcnow.io <info@arcnow.io>"]
+version = "0.1.1"
+edition = "2024"
+rust-version = "1.97.1"
+license = "GPL-3.0-or-later"
+description = "Launch, trade and read arcnow.io bonding-curve tokens on Arc, over JSON-RPC"
+repository = "https://github.com/arcnow-io/arcnow-io-sdk"
+readme = "README.md"
+keywords = ["arc", "bonding-curve", "usdc", "ethereum", "defi"]
+categories = ["api-bindings", "cryptography::cryptocurrencies"]
+include = ["src/**/*", "examples/**/*", "README.md", "rust-toolchain.toml", "LICENSE"]
+
+[dependencies]
+alloy = { version = "2.4.2", default-features = false, features = [
+  "std",
+  "provider-http",
+  # The HTTP transport itself, plus TLS. `provider-http` only wires the
+  # transport type in; without `reqwest` there is no `connect_http`, and without
+  # a TLS backend an https:// endpoint fails at connect time rather than at
+  # compile time. rustls rather than the system's OpenSSL so a published crate
+  # builds the same way everywhere.
+  "reqwest",
+  "reqwest-rustls-tls",
+  "signer-local",
+  "sol-types",
+  "contract",
+  "json",
+  "dyn-abi",
+  "json-abi",
+  "json-rpc",
+  "rpc-types-eth",
+] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+thiserror = "2.0.18"
+
+[dev-dependencies]
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "time", "sync", "net", "io-util", "process"] }
+# `kill(pid, 0)` for the stale-container sweep, `atexit` for teardown, and a
+# SIGINT handler so Ctrl-C removes what this process started.
+libc = "0.2.189"
+serde_json = "1.0.151"
+# The in-memory JSON-RPC endpoint the unit tests record requests with
+# (src/test_rpc.rs) implements alloy's Transport, which is a tower Service.
+tower = "0.5.3"
+
+[[example]]
+name = "launch_and_trade"
+path = "examples/launch_and_trade.rs"

@@ -1,0 +1,98 @@
+{
+  "$comment": [
+    "SNAPSHOTS of the curve template arcnow.io's platform serves, and the gate that keeps them honest.",
+    "",
+    "READ THE TEMPLATE FROM THE CHAIN. A curve template is per-platform state, settable at any",
+    "time by that platform's admin, and snapshotted immutably onto every curve at launch. The",
+    "authoritative answer for 'what will a new launch get' is PlatformConfig.curveParametersFor(quote); for",
+    "'what did THIS token get' it is the curve itself, and never this file.",
+    "",
+    "ONE CURVE, ONE TEMPLATE PER QUOTE (schemaVersion 4). Every template is the constant-product curve's:",
+    "its fourth field is y0Wad, and `quote` names the quote token it is denominated in (native USDC is",
+    "0x000...000). r0Wad, targetQuoteWad and initialPriceWad are in that quote's WAD units.",
+    "",
+    "WHAT EACH ENTRY IS. 'platform' non-null: a snapshot of that live platform, read at readAtBlock,",
+    "which scripts/check-template.sh reads back and FAILS on any difference, and on a platform whose",
+    "VERSION() is not platform-config@3.x.x. The network's arcnowPlatform must have one. 'platform'",
+    "null: a template no live platform serves, shipped as a starting point and checked field by field",
+    "against the vectors.json template named by vectorsTemplate, so it is never trusted unchecked.",
+    "",
+    "MOVING THIS FILE is a commit of its own: change the values, run scripts/sync-artifacts.sh and",
+    "scripts/check-template.sh, and say what moved on chain. Every wad is a STRING because y0Wad does",
+    "not fit in a double and JSON has no integers."
+  ],
+  "schemaVersion": 4,
+  "templates": {
+    "arc-testnet": {
+      "$comment": [
+        "arcnow.io's own PlatformConfig on the multi-quote stack, the one new launches use. 1,000,000 total",
+        "supply, 790,931.776678561246309959 of it on the curve (79.09%), 209,068.22 held back for the pool,",
+        "and a 50 USDC graduation target. Opening price 0.000016710135998192 USDC, graduation price",
+        "0.000239156382570519 - the 14.31x of version 1, reached convexly. Set by arcnow-io/contracts",
+        "SetCurveTemplate in derive mode; equal to ArcConstants TESTNET_* and to vectors.json 'testnet'.",
+        "",
+        "The platform serves the SAME six wads for EURC (read back at the same block), which is why",
+        "there is no second entry here: a snapshot per quote would duplicate one template and give",
+        "check-template.sh two chances to disagree with itself. It reads the native one."
+      ],
+      "network": "arc-testnet",
+      "platform": "0xa78b737da5758250cc95097425d3d3ba534ea47a",
+      "platformVersion": "arcnow/platform-config@3.0.0",
+      "quote": "0x0000000000000000000000000000000000000000",
+      "readAtBlock": 62227596,
+      "readOn": "2026-09-15",
+      "totalSupplyWad": "1000000000000000000000000",
+      "curveSupplyWad": "790931776678561246309959",
+      "y0Wad": "1075119882918585400293717",
+      "r0Wad": "17965399457930722779",
+      "targetQuoteWad": "50000000000000000000",
+      "initialPriceWad": "16710135998192",
+      "graduationPriceWad": "239156382570519",
+      "vectorsTemplate": "testnet"
+    },
+    "cpmm-reference": {
+      "$comment": [
+        "arcnow-io/contracts' reference version-2 template, ArcConstants REFERENCE_*: 1e9 tokens and a",
+        "50,000 USDC target at the 14.312x multiplier. No live platform serves it (the version-2 platform",
+        "deployed with it and moved to the testnet template before anything launched). The same prices",
+        "as arc-testnet at a thousand times the supply and the target."
+      ],
+      "network": null,
+      "platform": null,
+      "platformVersion": "arcnow/platform-config@2.0.0",
+      "quote": "0x0000000000000000000000000000000000000000",
+      "readAtBlock": null,
+      "readOn": null,
+      "totalSupplyWad": "1000000000000000000000000000",
+      "curveSupplyWad": "790931776678561246309958790",
+      "y0Wad": "1075119882918585400307130090",
+      "r0Wad": "17965399457930722779848",
+      "targetQuoteWad": "50000000000000000000000",
+      "initialPriceWad": "16710135998192",
+      "graduationPriceWad": "239156382570519",
+      "vectorsTemplate": "reference"
+    },
+    "arc-mainnet": {
+      "$comment": [
+        "There is no Arc mainnet deployment, so there is no platform to read a",
+        "template off. null rather than a copy of testnet's: a plausible-looking",
+        "template for a chain that does not exist is exactly the kind of constant",
+        "this file exists to stop shipping."
+      ],
+      "network": "arc-mainnet",
+      "platform": null,
+      "platformVersion": null,
+      "quote": null,
+      "readAtBlock": null,
+      "readOn": null,
+      "totalSupplyWad": null,
+      "curveSupplyWad": null,
+      "y0Wad": null,
+      "r0Wad": null,
+      "targetQuoteWad": null,
+      "initialPriceWad": null,
+      "graduationPriceWad": null,
+      "vectorsTemplate": null
+    }
+  }
+}

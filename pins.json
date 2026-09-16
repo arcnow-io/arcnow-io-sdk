@@ -1,0 +1,143 @@
+{
+  "$comment": [
+    "What this SDK was built against, and the gate that keeps it honest.",
+    "",
+    "ONE PIN. 'contracts' is the build of arcnow.io's one stack (the version-2 constant-product curve",
+    "and the claim-based fee hook): its ABIs are abi/*.json and its vectors vectors/vectors.json, pinned",
+    "to the arcnow-io/contracts commit that was DEPLOYED, which networks.json records as contractsCommit.",
+    "",
+    "scripts/check-pins.sh enforces, and preflight.sh runs it:",
+    "",
+    "  1. ALWAYS - every file under abi/ and vectors/ hashes to what is recorded here; the ABI set has",
+    "     the version-2 curve's shape (y0Wad and virtualTokenReserveWad, no kWad) so a set from another",
+    "     build cannot be recorded as this one; and the generated copies under rust/src/generated/ and",
+    "     typescript/src/generated/ are byte-identical projections.",
+    "",
+    "  2. WHEN A CONTRACTS CHECKOUT IS PRESENT - the same bytes exist at the pinned commit, and",
+    "     networks.json matches the deployment record in exports/addresses.json at 'addresses.commit'.",
+    "     Point at one with ARCNOW_CONTRACTS_DIR; ARCNOW_REQUIRE_CONTRACTS=1 makes a missing one a failure.",
+    "",
+    "MOVING A PIN is a commit of its own: change the commit, re-copy from exports/, record the hashes,",
+    "run scripts/sync-artifacts.sh and scripts/preflight.sh, and say what changed in the ABIs."
+  ],
+  "schemaVersion": 3,
+  "external": {
+    "$comment": [
+      "ABIs for contracts arcnow.io did not write and does not deploy. The pin is WEAKER",
+      "than the one below it and is filed separately so that it cannot be mistaken for it:",
+      "an arcnow.io ABI can be re-derived from a commit of arcnow-io/contracts and checked",
+      "byte for byte, and one of these cannot be re-derived from anything in this",
+      "repository. What is recorded instead is the address it was written against, the",
+      "keccak256 of the runtime code there, and how that code was identified. sha256 then",
+      "catches an edit to the file after the fact.",
+      "",
+      "IF THE CODEHASH AT THAT ADDRESS EVER CHANGES, the ABI is describing a contract that",
+      "no longer exists. arcnow-io/contracts' script/check-deployed-addresses.sh asks the",
+      "chain; this file only records the answer."
+    ],
+    "UniswapV4Router04.json": {
+      "sha256": "2b5b84473f111efd0f9cd8660f571debfa87fe332f71769d54242a3bf4f6562d",
+      "source": "https://github.com/z0r0z/v4-router",
+      "commit": "f5d5bfc2d70c56eb27cd645467e89f074d95660a",
+      "vendored_at": "arcnow-io/contracts external/v4-router, unmodified",
+      "chainId": 5042002,
+      "address": null,
+      "expected_address": "0x139166ee61bb560ff34f05ae4a2b666ad98b9b2e",
+      "expected_codehash": "0xdb6c35234868a7055a0b4e4084ef662c84149303925c101eb547d5e8b46b2c16",
+      "identified_by": [
+        "arcnow-io/contracts deploys this contract itself, from creation bytecode that",
+        "script/check-router-build.sh proves is exactly what the pinned upstream commit builds",
+        "to with upstream's own compiler settings. That build equals Uniswap's mainnet",
+        "deployment 0x00000000000044a361Ae3cAc094c9D1b14Eece97 except at seven immutable sites",
+        "and the metadata hash.",
+        "",
+        "expected_address is where CREATE2 through Arc's deterministic factory puts it, with",
+        "salt 0 and constructor arguments (PoolManager 0x06110b57..., Permit2 0x0000...8BA3);",
+        "expected_codehash is keccak256 of its runtime with those immutables filled in. address",
+        "stays null until the deployment is broadcast, and must equal expected_address.",
+        "",
+        "The five selectors this ABI declares were checked against the upstream build's method",
+        "identifiers: b1a0d571, aacdd80f, dc4c90d3, 12261ee7, 91dd7346."
+      ],
+      "partial": "Declares only what this SDK calls. Upstream also exposes multicall(bytes[]), msgSender(), multi-hop swaps over PathKey[], a generic swap(int256,...), swap(bytes,uint256), and a LibZip calldata-decompression fallback."
+    }
+  },
+  "contracts": {
+    "repo": "arcnow-io/contracts",
+    "commit": "327f45b4763ab7f2ba5fc8cc0426b3d02e63f816",
+    "why": [
+      "The multi-quote stack as DEPLOYED on Arc testnet: arcnow-io/contracts main at 327f45b (#26,",
+      "the deployment record for the stack built at 0d2472f — #22's frozen ABI, #23's ERC-20",
+      "implementation, #24's follow-ups). Native USDC and allowlisted ERC-20 quotes (bonding-curve@3.x,",
+      "quote registry, per-quote templates, the fee-share gas guard). exports/abi is byte-identical to",
+      "3920c4a: the ABI did not change after #22."
+    ],
+    "local_path": "abi",
+    "exports_path": "exports/abi",
+    "abi_sha256": {
+      "ArcNowFeeHook.json": "e02d6516f346c79293dfc6a9620012cc159756d75ac123159d7c58c7891ef1df",
+      "ArcToken.json": "aea3054cd7401d155c335487cd90edc68e5639c684d3ce60813e61bf7563e3f3",
+      "BondingCurve.json": "d2799a3ac8d44ac2eada107526462d1e9f13c3b866f072575499c81a5f83fa7e",
+      "CurveFactory.json": "00a3e90e861c1a00594c8255ddff9c45c435c9184fc86c4f8326f9498f3e1036",
+      "EscrowMigrator.json": "0334aacdf21a0ac5009d7691ee8cae6c27bc37168d7163b10b9f4a8912b79fad",
+      "Launchpad.json": "04aef2d078aae940d141161c8336a42deedc492b04281d63aad5786582fb9c3c",
+      "MigratorRegistry.json": "f4eaab8cfeca96cf6588ee936ca514424e0bcd0681062e11243407eec3e3e55d",
+      "PlatformConfig.json": "fb29a897d6aeca3d397e2b548e56a1a002f704b8edff8f44d283524eb73cc106",
+      "PlatformRegistry.json": "68e0e72963174ea370a4489093500a66009e78c2688a2a63da5585be36013e38",
+      "QuoteRegistry.json": "2625a7b2eb6be9a21350eaa0bbe01949a6fc40b31933aee8adcb506021f5b831",
+      "TokenFactory.json": "b0ab0d9a3ae3b067ae8d646eb78e41f0f41dcdb852d5dca7f9da9634273aa082",
+      "UniswapV2Migrator.json": "1b54e6429e9faa1c8059e2752399a03946780321d7c5a2a97e48670d75cb1541",
+      "UniswapV3Migrator.json": "fe31bbb07c014d608d34f6cfbbbd4e8310d1d9c5831c7002a827dd960758384b",
+      "UniswapV4Migrator.json": "902bf64316c4cee9ce64acaacb4f305a56815920718ea090b3c4042c6c3ae6d6",
+      "index.json": "f3ca753e267a0f26d1ed89f391f77d71a78fadde2d3dc4735dd276569470fbfc"
+    },
+    "vectors": {
+      "vectors/vectors.json": {
+        "path": "exports/vectors.json",
+        "sha256": "e01a2dcd975717329874095b480446abeb7044b110acfa90a454e8994ebfe19a"
+      }
+    },
+    "deployment": {
+      "$comment": [
+        "WHETHER THE ABIs ABOVE ARE DEPLOYED. 'deployed' means the pinned ABIs are what is on chain:",
+        "networks.json records the addresses of this same build, its contractsCommit equals the pin, and",
+        "check-template.sh compares the live platform's template against curve-templates.json rather than",
+        "reporting it as pre-multi-quote. It was 'pending' while the multi-quote ABIs were ahead of the",
+        "version-2 stack deployed from 735db85; the v3 stack was broadcast at block 62,226,550."
+      ],
+      "status": "deployed"
+    }
+  },
+  "addresses": {
+    "$comment": [
+      "networks.json against arcnow-io/contracts exports/addresses.json, the deployment record.",
+      "check-pins.sh compares every address (case-insensitively), every contractVersions entry and the",
+      "deployment block, and fails if either file carries a legacyStacks key: there is one stack. The",
+      "SDKs' arcnowPlatform is the record's platform, and the SDKs' deployedAtBlock the record's",
+      "deploymentBlock; both are public API in both SDKs. quoteRegistry is compared the same way: the",
+      "record names it once the multi-quote stack is deployed, and both are null until then."
+    ],
+    "repo": "arcnow-io/contracts",
+    "commit": "327f45b4763ab7f2ba5fc8cc0426b3d02e63f816",
+    "path": "exports/addresses.json",
+    "networks": {
+      "arc-testnet": "5042002"
+    }
+  },
+  "chain": {
+    "$comment": "Where the tests fork from, and at which block. Addresses live in networks.json, not here. The block is PINNED so a fork suite asserts against the same chain state on every run: 62226900 is after the multi-quote stack's deployment (62226550), after arcnow.io's platform was set to the testnet template, and after EURC was registered, so the addresses networks.json records carry code in the fork and the suites read the live stack as well as deploying their own. It was 61926859 while the version-2 stack was live. Override with ARCNOW_SDK_FORK_BLOCK=<n> (or 'latest') to fork elsewhere; the public endpoint serves historical state.",
+    "fork_url": "https://rpc.testnet.arc.io",
+    "chain_id": 5042002,
+    "fork_block_number": 62226900
+  },
+  "images": {
+    "$comment": "Pinned, never 'latest'. The same Foundry image arcnow-io/e2e-tests pins, so a fork that behaves differently there behaves differently here for a reason somebody chose.",
+    "foundry": "ghcr.io/foundry-rs/foundry:v1.8.1"
+  },
+  "toolchains": {
+    "$comment": "Exact, never a range and never auto-detected. Every other repository in this project pins the same Rust release; a toolchain that moves under a suite turns 'the system broke' and 'the compiler moved' into the same red run.",
+    "rust": "1.97.1",
+    "node": "22.12.0",
+    "forge": "1.7.1"
+  }
+}

@@ -1,0 +1,229 @@
+/**
+ * The numbers that define a platform's bonding curve, and reference snapshots of
+ * arcnow.io's own — checked against the chain rather than trusted.
+ *
+ * **A curve template is not a constant.** It is per-platform state, replaceable
+ * by that platform's admin in one transaction, and snapshotted immutably onto
+ * every curve at launch. Two questions, two answers, neither a literal here:
+ *
+ * - *what will a new launch get?* — `client.platforms.settings(platform).curve`,
+ *   the platform's live template;
+ * - *what did this token get?* — `client.curve(address).state()`. A curve keeps
+ *   its template for life.
+ *
+ * Every template is the constant-product curve's, served by
+ * `arcnow/platform-config@2.x.x`: its fourth field is `y0Wad`, the virtual token
+ * reserve at launch.
+ *
+ * The snapshots come from `curve-templates.json`, projected into `src/generated`
+ * by `scripts/sync-artifacts.sh`; `scripts/check-template.sh` reads the live
+ * platform in `networks.json` and fails on any difference.
+ *
+ * @module
+ */
+
+import type { QuoteTokenInfo } from "./amounts.js";
+import { NATIVE_QUOTE, NATIVE_USDC, QuoteAmount, Tokens } from "./amounts.js";
+import type { CurveParams } from "./curve-math.js";
+import { ArcNowError } from "./errors/error.js";
+import curveTemplatesJson from "./generated/curve-templates.json" with { type: "json" };
+
+/** One entry of `curve-templates.json`. Every wad is a string: they do not fit a double. */
+interface RawEntry {
+  network: string | null;
+  platform: string | null;
+  platformVersion: string | null;
+  quote: string | null;
+  totalSupplyWad: string | null;
+  curveSupplyWad: string | null;
+  y0Wad: string | null;
+  r0Wad: string | null;
+  targetQuoteWad: string | null;
+  initialPriceWad: string | null;
+}
+
+const ENTRIES = (curveTemplatesJson as unknown as {
+  templates: Record<string, RawEntry>;
+}).templates;
+
+/**
+ * `IPlatformConfig.CurveParameters`: the template every new launch on a
+ * platform is built from.
+ *
+ * **Do not hand-pick these.** `y0` and `r0` are *placed*, not rounded, so that
+ * the curve collects its target to the wei and the tokens held back are exactly
+ * what the target buys at the last price. Start from
+ * {@link CurveTemplate.arcnowDefaults} and let `PlatformConfig.checkCurveParameters`
+ * judge a change.
+ */
+export interface CurveTemplate {
+  /**
+   * The quote token the template is denominated in: `r0`, `target` and
+   * `initialPrice` are amounts of it. A platform serves one template per quote.
+   */
+  readonly quoteToken: QuoteTokenInfo;
+  /** Fixed supply minted to every new token. */
+  readonly totalSupply: Tokens;
+  /** Tokens the curve sells over its whole life. Strictly below the total. */
+  readonly curveSupply: Tokens;
+  /** The virtual token reserve at launch, `Y0`. Larger than the supply: the excess is virtual. */
+  readonly y0: Tokens;
+  /**
+   * The virtual USDC reserve at launch, `V0`. **Never payable to anyone** and not
+   * counted towards graduation: the real USDC a curve custodies is the reserve
+   * minus this.
+   */
+  readonly r0: QuoteAmount;
+  /** Real USDC the curve must collect to graduate. */
+  readonly target: QuoteAmount;
+  /** The declared price of the first token, wad USDC per wad token. */
+  readonly initialPrice: QuoteAmount;
+}
+
+/** The tuple `PlatformConfig` encodes and decodes. */
+export interface EncodedCurveParameters {
+  totalSupplyWad: bigint;
+  curveSupplyWad: bigint;
+  y0Wad: bigint;
+  r0Wad: bigint;
+  targetQuoteWad: bigint;
+  initialPriceWad: bigint;
+}
+
+function fromEntry(id: string): CurveTemplate | undefined {
+  const raw = ENTRIES[id];
+  if (
+    !raw || raw.totalSupplyWad === null || raw.curveSupplyWad === null || raw.y0Wad === null
+    || raw.r0Wad === null || raw.targetQuoteWad === null || raw.initialPriceWad === null
+  ) {
+    return undefined;
+  }
+  if ((raw.quote ?? NATIVE_QUOTE).toLowerCase() !== NATIVE_QUOTE) {
+    throw new ArcNowError({
+      code: "InvalidArgument",
+      message:
+        `curve-templates.json entry ${id} is priced in ${String(raw.quote)}, and the shipped `
+        + "references are native USDC only. Read an ERC-20 quote's template from the chain: "
+        + "client.platforms.curveParametersFor(platform, quote).",
+    });
+  }
+  return {
+    totalSupply: Tokens.fromWad(BigInt(raw.totalSupplyWad)),
+    curveSupply: Tokens.fromWad(BigInt(raw.curveSupplyWad)),
+    y0: Tokens.fromWad(BigInt(raw.y0Wad)),
+    quoteToken: NATIVE_USDC,
+    r0: QuoteAmount.fromWad(NATIVE_USDC, BigInt(raw.r0Wad)),
+    target: QuoteAmount.fromWad(NATIVE_USDC, BigInt(raw.targetQuoteWad)),
+    initialPrice: QuoteAmount.fromWad(NATIVE_USDC, BigInt(raw.initialPriceWad)),
+  };
+}
+
+function missing(what: string): never {
+  throw new ArcNowError({
+    code: "InvalidArgument",
+    message:
+      `curve-templates.json carries no ${what}. That file is projected into src/generated by `
+      + "scripts/sync-artifacts.sh and checked by scripts/check-pins.sh; run both.",
+  });
+}
+
+/** Constructors, the shipped snapshots, and the encoding. */
+export const CurveTemplate = {
+  /**
+   * arcnow.io's own template on Arc testnet, as its platform `0xa78b737d…` was
+   * serving it when `curve-templates.json` was last read off the chain:
+   * 1,000,000 supply, 790,931.776678561246309959 on the curve (79.09%), a 50 USDC
+   * target, opening at 0.000016710135998192 USDC and graduating at
+   * 0.000239156382570519.
+   *
+   * **A snapshot, not an authority.** Use it to seed a platform of your own;
+   * never to describe a live platform or a token.
+   */
+  arcnowDefaults(): CurveTemplate {
+    return CurveTemplate.referenceFor("arc-testnet") ?? missing("template for arc-testnet");
+  },
+
+  /**
+   * The snapshot of a named preset's platform template, or `undefined` where
+   * there is none to have read — `arc-mainnet`, which exists and has nothing
+   * deployed.
+   */
+  referenceFor(network: string): CurveTemplate | undefined {
+    const id = Object.keys(ENTRIES).find((key) => ENTRIES[key]?.network === network);
+    return id === undefined ? undefined : fromEntry(id);
+  },
+
+  /**
+   * arcnow-io/contracts' reference template, `ArcConstants REFERENCE_*`:
+   * 1,000,000,000 supply and a 50,000 USDC target, the same prices as the
+   * testnet template at a thousand times the scale. No live platform serves it;
+   * `scripts/check-template.sh` holds it equal to the contracts' `vectors.json`.
+   */
+  reference(): CurveTemplate {
+    return fromEntry("cpmm-reference") ?? missing("reference template (cpmm-reference)");
+  },
+
+  /** `totalSupply - curveSupply`: what the template holds back for the pool. */
+  heldBack(template: CurveTemplate): Tokens {
+    return template.totalSupply.subSaturating(template.curveSupply);
+  },
+
+  /** The curve parameters a curve launched from this template would snapshot. */
+  params(template: CurveTemplate): CurveParams {
+    return { r0Wad: template.r0.wad, y0Wad: template.y0.wad };
+  },
+
+  /** Encode as the `CurveParameters` tuple. */
+  encode(template: CurveTemplate): EncodedCurveParameters {
+    return {
+      totalSupplyWad: template.totalSupply.wad,
+      curveSupplyWad: template.curveSupply.wad,
+      y0Wad: template.y0.wad,
+      r0Wad: template.r0.wad,
+      targetQuoteWad: template.target.wad,
+      initialPriceWad: template.initialPrice.wad,
+    };
+  },
+
+  /** Decode what `platform.curveParameters()` returned. */
+  decode(raw: EncodedCurveParameters, quoteToken: QuoteTokenInfo = NATIVE_USDC): CurveTemplate {
+    return {
+      totalSupply: Tokens.fromWad(raw.totalSupplyWad),
+      curveSupply: Tokens.fromWad(raw.curveSupplyWad),
+      y0: Tokens.fromWad(raw.y0Wad),
+      quoteToken,
+      r0: QuoteAmount.fromWad(quoteToken, raw.r0Wad),
+      target: QuoteAmount.fromWad(quoteToken, raw.targetQuoteWad),
+      initialPrice: QuoteAmount.fromWad(quoteToken, raw.initialPriceWad),
+    };
+  },
+
+  /**
+   * The cheap half of what `PlatformConfig` checks, done locally: the supplies.
+   *
+   * **Not the full validation.** The curve relationships and the pool-reserve
+   * rule are checked on chain by `checkCurveParameters`, exposed as
+   * `client.platforms.checkCurveTemplate(...)`.
+   */
+  checkSupplies(template: CurveTemplate): void {
+    if (template.totalSupply.isZero() || template.curveSupply.isZero()) {
+      throw new ArcNowError({
+        code: "InvalidArgument",
+        message:
+          "a curve template needs a non-zero total supply and a non-zero curve supply. "
+          + "Start from CurveTemplate.arcnowDefaults().",
+      });
+    }
+    if (!template.curveSupply.lt(template.totalSupply)) {
+      throw new ArcNowError({
+        code: "InvalidArgument",
+        message:
+          `the curve supply (${template.curveSupply.toString()}) must be strictly below the `
+          + `total supply (${template.totalSupply.toString()}). What is left over is the `
+          + "inventory the migrator opens the market with, and a pool cannot be opened with "
+          + "one side empty - a template that puts the whole supply on the curve does not "
+          + "risk an empty migration, it guarantees one.",
+      });
+    }
+  },
+} as const;
