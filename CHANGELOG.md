@@ -12,6 +12,10 @@ the first one below, is kept as written.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-09-17
+
+- A republish whose version is already on the mirror continues to the registries
+
 ## [0.1.1] - 2026-09-16
 
 - No early-exiting reader in any publish pipeline
