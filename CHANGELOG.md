@@ -12,6 +12,10 @@ the first one below, is kept as written.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-09-17
+
+- The npm step reads "cannot publish over" as already published
+
 ## [0.1.2] - 2026-09-17
 
 - A republish whose version is already on the mirror continues to the registries
