@@ -458,7 +458,7 @@ function typeNameOf(token: QuoteTokenInfo): string {
  * ```ts
  * Usdc.fromWhole(50n)            // fifty dollars
  * Usdc.parse("1.25")             // exact; rejects a 19th decimal place
- * Usdc.fromWad(2n * 10n ** 18n)  // the launch fee, as the chain stores it
+ * Usdc.fromWad(50n * 10n ** 18n) // a graduation target, as the chain stores it
  * ```
  */
 export type Usdc = QuoteAmount;

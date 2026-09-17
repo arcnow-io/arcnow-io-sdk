@@ -127,16 +127,20 @@ const ABIS: &[(&str, &str)] = &[
 #[allow(clippy::large_enum_variant)]
 pub enum Error {
     // ---------------------------------------------------------------- config
-    /// The network preset exists and nothing is deployed on it.
+    /// The network configuration resolves and one or more of the core
+    /// contracts is not deployed on it.
     ///
-    /// This is what `arc-mainnet` answers. It is deliberately not an "unknown
-    /// network" error: the preset is real, its shape is complete, and every
-    /// address in it is `null` because arcnow.io is not on that chain.
+    /// Both presets — `arc-testnet` and `arc-mainnet` — are fully deployed, so
+    /// this is what a [`crate::Network::Custom`] configuration with gaps in it
+    /// answers. It is deliberately not an "unknown network" error: the
+    /// configuration is real, its shape is complete, and an address in it is
+    /// `None`.
     #[error(
-        "the {network} preset resolves and has no deployment behind it: {} {} not deployed there. \
+        "the {network} network resolves and has no deployment behind it: {} {} not deployed there. \
          Nothing in this crate will invent an address for a chain it has not been told about, and \
          the zero address is a real account on Arc that would send money nowhere. Either target \
-         arc-testnet, or build a client from Network::Custom with the addresses you know.",
+         arc-testnet or arc-mainnet, or build a client from Network::Custom with the addresses \
+         you know.",
         missing.join(", "),
         if missing.len() == 1 { "is" } else { "are" }
     )]
@@ -206,11 +210,11 @@ pub enum Error {
         actual: u64,
     },
 
-    /// A platform's three allocations add up to more than it is allowed to give
+    /// A platform's two allocations add up to more than it is allowed to give
     /// away. Checked client-side, before anything is sent.
     #[error(
-        "a platform may allocate at most {allowance} across creator, ref and dev, and \
-         {creator} + {ref_share} + {dev} is {requested}. What it does not allocate is its own \
+        "a platform may allocate at most {allowance} across creator and ref, and \
+         {creator} + {ref_share} is {requested}. What it does not allocate is its own \
          share, so this configuration leaves the platform {residual} — and the registry will \
          refuse it with FeeSharesExceedAllowance rather than deploy it. Note the allowance is \
          measured against the protocol's MAXIMUM share (2500 bps), not its current one, so this \
@@ -221,9 +225,7 @@ pub enum Error {
         creator: Bps,
         /// The ref share asked for.
         ref_share: Bps,
-        /// The dev share asked for.
-        dev: Bps,
-        /// The three, totalled.
+        /// The two, totalled.
         requested: Bps,
         /// The most a platform may allocate: 7500 bps.
         allowance: Bps,
@@ -289,19 +291,20 @@ pub enum Error {
     /// A contract answered a `VERSION()` this SDK cannot price.
     ///
     /// Raised before any curve maths and before any trade is sent. This crate
-    /// prices one bonding curve, the multi-quote constant-product
-    /// `arcnow/bonding-curve@3.x.x`; any other version — the single-quote
-    /// `@2.x.x` included — would be priced or paid wrongly, silently, so it is
-    /// refused by name. A platform, platform registry, launchpad, quote
-    /// registry or v4 migrator of another major is refused the same way.
+    /// prices one bonding curve, the fee-model constant-product
+    /// `arcnow/bonding-curve@4.x.x`; any other version — the retired multi-quote
+    /// `@3.x.x` and the single-quote `@2.x.x` included — would be priced or paid
+    /// wrongly, silently, so it is refused by name. A platform, platform
+    /// registry, launchpad, quote registry or v4 migrator of another major is
+    /// refused the same way.
     #[error(
-        "{version:?} is not a version this SDK can price. It speaks the multi-quote stack: \
-         arcnow/bonding-curve@3.x.x, arcnow/platform-config@3.x.x, arcnow/platform-registry@3.x.x, \
+        "{version:?} is not a version this SDK can price. It speaks the fee-model stack: \
+         arcnow/bonding-curve@4.x.x, arcnow/platform-config@4.x.x, arcnow/platform-registry@4.x.x, \
          arcnow/launchpad@3.x.x, arcnow/quote-registry@1.x.x and arcnow/uniswap-v4-migrator@2.x.x; \
          anything else encodes different amounts, events or templates and would be read wrongly \
          without an error, so it is refused. Nothing was sent. {}Upgrade the SDK if arcnow.io \
          has deployed a new stack.",
-        predates_quote_tokens_note(version)
+        retired_stack_note(version)
     )]
     UnknownCurveVersion {
         /// The version string, verbatim.
@@ -334,18 +337,21 @@ pub enum Error {
     CurveMath(#[from] crate::MathError),
 
     /// A pool's fee hook answers a `VERSION()` that is not
-    /// `arcnow/arc-now-fee-hook@3.x.x`.
+    /// `arcnow/arc-now-fee-hook@4.x.x`.
     ///
     /// The fee-hook counterpart of [`Error::UnknownCurveVersion`]: how a hook
-    /// books its fee decides what "accrued" and "distributed" mean, so a hook
-    /// this SDK does not know is refused by name rather than read as the nearest
-    /// one.
+    /// books its fee, and how much of it, decides what "accrued" and
+    /// "distributed" mean, so a hook this SDK does not know is refused by name
+    /// rather than read as the nearest one. The `@3.x.x` hook of the retired
+    /// multi-quote stack took the curve's 1% and split it five ways; this one
+    /// takes the pool's own 0.80% and splits it three.
     #[error(
         "the fee hook at {hook} answers VERSION() {version:?}, which is not \
-         arcnow/arc-now-fee-hook@3.x.x, the hook that accrues its fee as PoolManager claims in the \
-         pool's quote currency, in raw units. How \
-         another build books its fees cannot be guessed, so nothing was read from it or sent to \
-         it. Upgrade the SDK if arcnow.io has deployed a new hook."
+         arcnow/arc-now-fee-hook@4.x.x, the hook that takes the pool's own 0.80% and accrues it as \
+         PoolManager claims in the pool's quote currency, in raw units. How another build books \
+         its fees, and how much it takes, cannot be guessed, so nothing was read from it or sent \
+         to it. {}Upgrade the SDK if arcnow.io has deployed a new hook.",
+        retired_stack_note(version)
     )]
     UnknownHookVersion {
         /// The hook, from the pool's key.
@@ -645,11 +651,11 @@ pub enum Error {
     )]
     InvalidFeeConfig,
 
-    /// The five shares do not total 10000.
+    /// The four shares do not total 10000.
     #[error(
-        "the five fee shares total {total} and must total exactly 10000 bps of the fee. Remember \
+        "the four fee shares total {total} and must total exactly 10000 bps of the fee. Remember \
          the platform's own share is the residual and is never an input: it is \
-         10000 - protocol - creator - ref - dev."
+         10000 - protocol - creator - ref."
     )]
     FeeSharesNotWhole {
         /// What they actually totalled.
@@ -666,7 +672,7 @@ pub enum Error {
     /// A fee recipient that must be set is the zero address.
     #[error(
         "the platform and protocol fee recipients must both be non-zero. They are the two that \
-         cannot be resolved at swap time — creator, ref and dev may be zero, and their shares go \
+         cannot be resolved at swap time — creator and ref may be zero, and their shares go \
          to the platform. On Arc a native transfer to the zero address reverts, so a zero \
          recipient does not lose money quietly, it bricks every trade on every token that platform \
          launches."
@@ -995,12 +1001,12 @@ pub enum Error {
     /// A request built for one venue was handed to a token trading at the other.
     ///
     /// The two venues are not interchangeable and the request types say so: a
-    /// curve trade credits a referrer and a developer and ignores any recipient,
-    /// a pool trade pays a named receiver and has nobody to credit. Rather than
-    /// silently dropping the fields that do not apply, the front door refuses.
+    /// curve trade credits a referrer and ignores any recipient, a pool trade
+    /// pays a named receiver and has nobody to credit. Rather than silently
+    /// dropping the fields that do not apply, the front door refuses.
     #[error(
         "{token} trades at the {actual} and this is a {requested} request. They are not \
-         interchangeable: a curve trade credits a referrer and a developer and always pays the \
+         interchangeable: a curve trade credits a referrer and always pays the \
          sender, a pool trade pays a named receiver and credits nobody. Ask Trade::venue (or read \
          the venue off the quote) and build the matching request."
     )]
@@ -1190,35 +1196,47 @@ pub enum Error {
     },
 }
 
-/// The multi-quote stack's major version for each component this SDK gates.
-const MULTI_QUOTE_MAJORS: [(&str, u64); 7] = [
-    ("bonding-curve", 3),
-    ("platform-config", 3),
-    ("platform-registry", 3),
+/// The major each component of the fee-model stack is at. A component at a
+/// lower major belongs to a stack arcnow.io no longer runs.
+const STACK_MAJORS: [(&str, u64); 7] = [
+    ("bonding-curve", 4),
+    ("platform-config", 4),
+    ("platform-registry", 4),
+    ("arc-now-fee-hook", 4),
     ("launchpad", 3),
-    ("arc-now-fee-hook", 3),
     ("quote-registry", 1),
     ("uniswap-v4-migrator", 2),
 ];
 
-/// "This build predates quote tokens" for a known component at an older major
-/// than the multi-quote stack's — the live version-2 stack — and nothing for any
-/// other version, including a newer build or another contract's `VERSION()`.
-fn predates_quote_tokens_note(version: &str) -> &'static str {
-    let older = version
+/// Which retired stack a known component's older major belongs to, for the
+/// refusal message — and nothing for a newer build or another contract's
+/// `VERSION()`.
+///
+/// One major below a component that moved to 4 is the multi-quote (v3) stack,
+/// retired with the developer share: those contracts are gone from arcnow.io's
+/// networks and the retired testnet stack's data was wiped. Anything older
+/// predates quote tokens as well.
+fn retired_stack_note(version: &str) -> &'static str {
+    let Some((major, wanted)) = version
         .strip_prefix("arcnow/")
         .and_then(|rest| rest.split_once('@'))
         .and_then(|(component, semver)| {
             let major = semver.split('.').next()?.parse::<u64>().ok()?;
-            let wanted = MULTI_QUOTE_MAJORS.iter().find(|(name, _)| *name == component)?.1;
-            Some(major < wanted)
+            let wanted = STACK_MAJORS.iter().find(|(name, _)| *name == component)?.1;
+            Some((major, wanted))
         })
-        .unwrap_or(false);
-    if older {
-        "This build predates quote tokens: it is the version-2 stack, which this SDK no longer \
-         speaks. "
-    } else {
+    else {
+        return "";
+    };
+    if major >= wanted {
         ""
+    } else if wanted == 4 && major == 3 {
+        "This is the retired multi-quote (v3) stack, the one that carried a developer share: its \
+         3.x contracts are gone from arcnow.io's networks and the retired testnet stack's data \
+         was wiped, so nothing this SDK could say about it would describe anything live. "
+    } else {
+        "This build predates quote tokens: it is the version-2 stack or older, which this SDK no \
+         longer speaks. "
     }
 }
 
@@ -1589,7 +1607,6 @@ fn curate(entry: &Entry, body: &[DynSolValue]) -> Error {
             Error::FeeSharesExceedAllowance {
                 creator: Bps::ZERO,
                 ref_share: Bps::ZERO,
-                dev: Bps::ZERO,
                 requested,
                 allowance,
                 residual: format!("{} bps short", requested.get().saturating_sub(allowance.get())),

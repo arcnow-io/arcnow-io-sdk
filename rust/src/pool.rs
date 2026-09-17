@@ -57,7 +57,8 @@
 //!
 //! A quote is an `eth_call` of the **real swap**, against the router, read back
 //! as the `BalanceDelta` it returns — the trader's own delta, with the hook's
-//! 1% already inside it. The call needs state it does not have, and gets it from
+//! 0.80% and the pool's 0.20% LP fee already inside it. The call needs state it
+//! does not have, and gets it from
 //! **`eth_call` state overrides**:
 //!
 //! * a **native** buy is quoted from a probe account given the value to pay;
@@ -68,14 +69,24 @@
 //! * a sell is quoted from the seller, with the token allowance overridden at
 //!   [`ARC_TOKEN_ALLOWANCE_SLOT`].
 //!
-//! # The 1% is charged in the quote, inside the swap
+//! # A migrated trade costs 1.00%: the hook's 0.80% plus the LP fee's 0.20%
 //!
-//! `ArcNowFeeHook` takes 1% of the **gross quote leg** of every swap, in raw
-//! units of the quote, and books it as a `PoolManager` claim paid out five ways
-//! later. Because it is already inside the delta the router returns, a quote
-//! does not add it on: the fee is *derived* from the quote by the identity for
-//! that side, on raw units as the hook computes it. See
-//! [`buy_fee_from_quote_in`] and [`sell_fee_from_quote_out`].
+//! `ArcNowFeeHook` takes [`POOL_TRADE_FEE_BPS`] — 0.80% — of the **gross quote
+//! leg** of every swap, in raw units of the quote, and books it as a
+//! `PoolManager` claim paid out three ways later, on the pool's own split:
+//! creator [`POOL_CREATOR_SHARE_BPS`], platform [`POOL_PLATFORM_SHARE_BPS`],
+//! protocol [`POOL_PROTOCOL_SHARE_BPS`]. A pool has no referrer. Uniswap's LP
+//! fee — [`POOL_LP_FEE_PIPS`], 0.20%, baked into every pool key the migrator
+//! opens — is the other half, so the trader pays the same 1.00% the curve
+//! charged ([`POOL_TOTAL_FEE_BPS`]). The LP fee is not revenue: the migrator
+//! burns its position, so it accrues to liquidity nobody can collect.
+//!
+//! Because the hook's fee is already inside the delta the router returns, a
+//! quote does not add it on: the fee is *derived* from the quote by the
+//! identity for that side, on raw units as the hook computes it. See
+//! [`buy_fee_from_quote_in`] and [`sell_fee_from_quote_out`]. The LP fee is
+//! inside the pool's price and is never reported as a fee. Read the rate and
+//! the split off the hook with [`Pool::hook_fee_bps`] and [`Pool::fee_config`].
 //!
 //! # Buying with an ERC-20 quote needs an allowance; selling always does
 //!
@@ -108,6 +119,7 @@ use crate::curve::{BuyQuote, BuyRequest, BuyResult, Curve, SellQuote, SellReques
 use crate::curve_math;
 use crate::deadline::Deadline;
 use crate::error::Error;
+use crate::platform::FeeConfig;
 use crate::quote::Batch;
 
 // ---------------------------------------------------------------------------
@@ -115,9 +127,50 @@ use crate::quote::Batch;
 // ---------------------------------------------------------------------------
 
 /// The fee `ArcNowFeeHook` takes out of every swap, in basis points of the
-/// **gross quote leg**. 1%, the same rate the curve charges, and not
-/// configurable.
-pub const POOL_TRADE_FEE_BPS: Bps = Bps::of_trade(100);
+/// **gross quote leg**: 80 bps, 0.80%. `ArcConstants.POOL_TRADE_FEE_BPS`; the
+/// hook answers it as `feeBps()` ([`Pool::hook_fee_bps`]).
+///
+/// **Not the curve's 1%, and the difference is the LP fee.** The pool charges
+/// [`POOL_LP_FEE_PIPS`] on top of what the hook takes, so at 1% here a migrated
+/// token would have cost 1.30% where its curve cost 1.00%. At 0.80% the trader
+/// pays the same [`POOL_TOTAL_FEE_BPS`] on both sides of graduation.
+pub const POOL_TRADE_FEE_BPS: Bps = Bps::of_trade(80);
+
+/// The Uniswap v4 LP fee of every pool arcnow.io's migrator opens, in
+/// hundredths of a basis point: 2000, 0.20%. Baked into the `PoolKey` the
+/// migrator builds, so it reaches only pools this migrator opened; read a
+/// particular pool's off its key ([`PoolKey::fee`]).
+///
+/// Not revenue: the migrator burns its position, so it accrues to liquidity
+/// nobody can collect. It buys exact arithmetic for the pool's split — 3125
+/// bps of 0.80% is 0.25% of a trade to the wei — and nothing else.
+pub const POOL_LP_FEE_PIPS: u32 = 2_000;
+
+/// The tick spacing of every pool arcnow.io's migrator opens. Read a particular
+/// pool's off its key ([`PoolKey::tick_spacing`]).
+pub const POOL_TICK_SPACING: i32 = 60;
+
+/// What a migrated trade costs in all: the hook's [`POOL_TRADE_FEE_BPS`] plus
+/// the LP fee, 100 bps — the same 1.00% the curve charges.
+pub const POOL_TOTAL_FEE_BPS: Bps =
+    Bps::of_trade(POOL_TRADE_FEE_BPS.get() + POOL_LP_FEE_PIPS / 100);
+
+/// The creator's share of a pool's fee: 5000 bps of the hook's 0.80%, 0.40% of
+/// a trade. Higher than the curve's 0.30%, on purpose: a creator whose token
+/// graduated earns more from it, not less. `ArcConstants.POOL_CREATOR_SHARE_BPS`.
+pub const POOL_CREATOR_SHARE_BPS: Bps = Bps::of_fee(5_000);
+
+/// The platform's share of a pool's fee: 1875 bps, 0.15% of a trade. A stated
+/// input here, not the residual it is on a curve: a pool has no referrer to
+/// name, so there is no unaddressed share to absorb.
+/// `ArcConstants.POOL_PLATFORM_SHARE_BPS`.
+pub const POOL_PLATFORM_SHARE_BPS: Bps = Bps::of_fee(1_875);
+
+/// The protocol's share of a pool's fee: 3125 bps, 0.25% of a trade — the same
+/// quarter percent it takes on the curve, as a larger share of a smaller fee.
+/// The three pool shares total exactly 10000; the ref share is zero.
+/// `ArcConstants.POOL_PROTOCOL_SHARE_BPS`.
+pub const POOL_PROTOCOL_SHARE_BPS: Bps = Bps::of_fee(3_125);
 
 /// The storage slot of `ArcToken._allowance`.
 ///
@@ -253,7 +306,7 @@ fn raw_floor(amount: &QuoteAmount) -> U256 {
 ///
 /// On an exact-input buy the quote leg the trader names *is* the gross: the hook
 /// takes its cut in `beforeSwap`. Computed on **raw units**, as the hook does:
-/// `fee_raw = raw_in * 100 / 10_000`, floored, then scaled back to a wad.
+/// `fee_raw = raw_in * 80 / 10_000`, floored, then scaled back to a wad.
 #[must_use]
 pub fn buy_fee_from_quote_in(quote_in: &QuoteAmount) -> QuoteAmount {
     let fee_raw = raw_floor(quote_in) * POOL_TRADE_FEE_BPS.to_u256() / U256::from(Bps::DENOMINATOR);
@@ -261,7 +314,7 @@ pub fn buy_fee_from_quote_in(quote_in: &QuoteAmount) -> QuoteAmount {
 }
 
 /// The gross quote a **sell** moved out of the pool, derived from what the
-/// trader received: `gross_raw = raw_out * 10_000 / 9_900`, on raw units.
+/// trader received: `gross_raw = raw_out * 10_000 / 9_920`, on raw units.
 #[must_use]
 pub fn sell_gross_from_quote_out(quote_out: &QuoteAmount) -> QuoteAmount {
     let gross_raw = raw_floor(quote_out) * U256::from(Bps::DENOMINATOR)
@@ -271,10 +324,10 @@ pub fn sell_gross_from_quote_out(quote_out: &QuoteAmount) -> QuoteAmount {
 
 /// An **estimate** of what a sell paid the trader, from the fee the hook logged
 /// and nothing else — a lower bound, never the figure a fill reports:
-/// `raw_fee * 9_900 / 100`, on raw units.
+/// `raw_fee * 9_920 / 80`, on raw units.
 ///
 /// [`Pool::sell`] does not use this: it reads the payout exactly, out of the
-/// `PoolManager`'s `Swap` log. **Up to 99 raw units under the truth.**
+/// `PoolManager`'s `Swap` log. **Up to 124 raw units under the truth.**
 #[must_use]
 pub fn sell_quote_out_from_fee(fee: &QuoteAmount) -> QuoteAmount {
     let out_raw = raw_floor(fee) * U256::from(Bps::DENOMINATOR - POOL_TRADE_FEE_BPS.get())
@@ -283,7 +336,7 @@ pub fn sell_quote_out_from_fee(fee: &QuoteAmount) -> QuoteAmount {
 }
 
 /// The hook's fee on a **sell**, derived from what the trader received:
-/// `gross_raw * 100 / 10_000` where `gross_raw` is
+/// `gross_raw * 80 / 10_000` where `gross_raw` is
 /// [`sell_gross_from_quote_out`]'s. The two steps are separate because the
 /// rounding happens in both.
 #[must_use]
@@ -327,12 +380,13 @@ pub struct PoolKey {
     pub currency0: Address,
     /// The higher-sorted currency.
     pub currency1: Address,
-    /// The pool's LP fee, in hundredths of a basis point (`3000` is 0.30%).
-    /// **Not** the arcnow.io fee, which is the hook's and is charged separately.
+    /// The pool's LP fee, in hundredths of a basis point: [`POOL_LP_FEE_PIPS`],
+    /// 0.20%, on every pool arcnow.io's current migrator opens. **Not** the
+    /// arcnow.io fee, which is the hook's and is charged separately.
     pub fee: u32,
     /// The tick spacing the pool was initialised with.
     pub tick_spacing: i32,
-    /// `ArcNowFeeHook`, which takes the 1% in the quote inside the swap.
+    /// `ArcNowFeeHook`, which takes the 0.80% in the quote inside the swap.
     pub hooks: Address,
 }
 
@@ -402,8 +456,8 @@ pub struct PoolBuyQuote {
     pub quote_in: QuoteAmount,
     /// Tokens the buyer receives.
     pub tokens_out: Tokens,
-    /// The hook's 1%, already inside this quote rather than added to it. See
-    /// [`buy_fee_from_quote_in`].
+    /// The hook's 0.80%, already inside this quote rather than added to it. See
+    /// [`buy_fee_from_quote_in`]. The pool's 0.20% LP fee is inside the price.
     pub fee_quote: QuoteAmount,
 }
 
@@ -428,8 +482,8 @@ pub struct PoolSellQuote {
     pub tokens_in: Tokens,
     /// Quote the seller receives, **net of the hook's fee**.
     pub quote_out: QuoteAmount,
-    /// The hook's 1% of the gross the pool paid out. See
-    /// [`sell_fee_from_quote_out`].
+    /// The hook's 0.80% of the gross the pool paid out. See
+    /// [`sell_fee_from_quote_out`]. The pool's 0.20% LP fee is inside the price.
     pub fee_quote: QuoteAmount,
 }
 
@@ -471,7 +525,7 @@ pub struct PoolTradeResult {
     pub quote: QuoteAmount,
     /// Tokens: received on a buy, sold on a sell.
     pub tokens: Tokens,
-    /// The hook's 1%, as it was charged in this transaction. Accrued as a
+    /// The hook's 0.80%, as it was charged in this transaction. Accrued as a
     /// `PoolManager` claim and paid out later; see [`Pool::accrued_hook_fee`].
     pub fee_quote: QuoteAmount,
     /// Fees charged by **earlier** transactions that this trade's swap paid out,
@@ -1055,13 +1109,60 @@ impl<'a> Pool<'a> {
     }
 
     /// The `VERSION()` of this pool's fee hook, verbatim. Every quote and trade
-    /// refuses a hook that is not `arcnow/arc-now-fee-hook@3.x.x`.
+    /// refuses a hook that is not `arcnow/arc-now-fee-hook@4.x.x`.
     ///
     /// # Errors
     /// [`Error::TokenNotMigrated`]; [`Error::Rpc`] if the endpoint fails.
     pub async fn hook_version(&self) -> Result<String, Error> {
         let hook = self.market().await?.key.hooks;
         self.read_hook_version(hook).await
+    }
+
+    /// The rate this pool's hook takes out of every swap, in bps of the gross
+    /// quote leg: `feeBps()`. [`POOL_TRADE_FEE_BPS`] on every hook arcnow.io
+    /// has deployed, read here rather than assumed.
+    ///
+    /// # Errors
+    /// [`Error::TokenNotMigrated`]; [`Error::UnknownHookVersion`];
+    /// [`Error::Rpc`]; [`Error::ImplausibleBps`].
+    pub async fn hook_fee_bps(&self) -> Result<Bps, Error> {
+        let market = self.market().await?;
+        self.check_hook(market.key.hooks).await?;
+        let raw = HookAbi::new(market.key.hooks, self.provider().clone())
+            .feeBps()
+            .call()
+            .await
+            .map_err(|err| Error::from_contract(err, "reading a pool hook's fee rate"))?;
+        Bps::from_u256(raw)
+    }
+
+    /// The split this pool's hook wrote at registration: `feeConfigOf(poolId)`.
+    ///
+    /// The pool's own split, not the curve's — [`POOL_CREATOR_SHARE_BPS`] /
+    /// [`POOL_PLATFORM_SHARE_BPS`] / [`POOL_PROTOCOL_SHARE_BPS`] on every pool
+    /// arcnow.io's migrator opens — with `ref_share` zero, because a pool has no
+    /// argument to name a referrer with. The two recipients are the ones the
+    /// token's curve snapshotted at launch.
+    ///
+    /// # Errors
+    /// [`Error::TokenNotMigrated`]; [`Error::UnknownHookVersion`];
+    /// [`Error::Rpc`]; [`Error::ImplausibleBps`].
+    pub async fn fee_config(&self) -> Result<FeeConfig, Error> {
+        let market = self.market().await?;
+        self.check_hook(market.key.hooks).await?;
+        let config = HookAbi::new(market.key.hooks, self.provider().clone())
+            .feeConfigOf(market.pool_id)
+            .call()
+            .await
+            .map_err(|err| Error::from_contract(err, "reading a pool's fee split"))?;
+        FeeConfig::from_abi(
+            config.creatorShareBps,
+            config.platformShareBps,
+            config.refShareBps,
+            config.protocolShareBps,
+            config.platformRecipient,
+            config.protocolRecipient,
+        )
     }
 
     /// Fees this pool has charged and not yet paid out: `accruedFee(poolId)`,
@@ -1082,7 +1183,7 @@ impl<'a> Pool<'a> {
     }
 
     /// Pay out this pool's accrued hook fees now: `distributeFees(key)`.
-    /// **Permissionless**; the fee goes to the pool's five recipients.
+    /// **Permissionless**; the fee goes to the pool's three recipients.
     ///
     /// Returns what was distributed, in the quote, and the transaction.
     ///
@@ -1635,7 +1736,7 @@ impl TradeBuyQuote {
         }
     }
 
-    /// The 1% arcnow.io fee, in the quote.
+    /// The arcnow.io fee, in the quote: the curve's 1%, or the hook's 0.80%.
     #[must_use]
     pub const fn fee(&self) -> &QuoteAmount {
         match self {
@@ -1681,7 +1782,7 @@ impl TradeSellQuote {
         }
     }
 
-    /// The 1% arcnow.io fee.
+    /// The arcnow.io fee: the curve's 1%, or the hook's 0.80%.
     #[must_use]
     pub const fn fee(&self) -> &QuoteAmount {
         match self {
@@ -1848,10 +1949,10 @@ impl TradeSellResult {
     }
 }
 
-/// Refuse a fee hook that is not `arcnow/arc-now-fee-hook@3.x.x`, the hook that
-/// books its fee in the pool's quote, in raw units.
+/// Refuse a fee hook that is not `arcnow/arc-now-fee-hook@4.x.x`, the hook that
+/// takes the pool's own 0.80% and books it in the pool's quote, in raw units.
 fn check_hook_version(hook: Address, version: &str) -> Result<(), Error> {
-    if curve_math::major_of("arc-now-fee-hook", version) == Some(3) {
+    if curve_math::major_of("arc-now-fee-hook", version) == Some(4) {
         Ok(())
     } else {
         Err(Error::UnknownHookVersion { hook, version: version.to_owned() })
@@ -1986,7 +2087,8 @@ mod tests {
     fn a_sell_is_exact_where_the_fee_alone_only_bounds_it() {
         let logs = [swap(10_199, -7), fee(101, false)];
         assert_eq!(read(&logs, Side::Sell).unwrap(), (wei(10_098), wei(101)));
-        assert_eq!(sell_quote_out_from_fee(&wei(101)), wei(9_999));
+        // 101 * 9_920 / 80 = 12_524: the estimate from the fee alone, at 0.80%.
+        assert_eq!(sell_quote_out_from_fee(&wei(101)), wei(12_524));
     }
 
     #[test]
@@ -2106,14 +2208,18 @@ mod tests {
     }
 
     #[test]
-    fn only_a_version_3_hook_is_accepted() {
+    fn only_a_version_4_hook_is_accepted() {
         let hook = Address::repeat_byte(0x44);
-        assert!(check_hook_version(hook, "arcnow/arc-now-fee-hook@3.0.0").is_ok());
-        assert!(check_hook_version(hook, "arcnow/arc-now-fee-hook@3.3.1").is_ok());
+        assert!(check_hook_version(hook, "arcnow/arc-now-fee-hook@4.0.0").is_ok());
+        assert!(check_hook_version(hook, "arcnow/arc-now-fee-hook@4.3.1").is_ok());
         for refused in [
+            // The retired multi-quote (v3) hook: it took the curve's 1%, not the
+            // pool's own 0.80%, and split it five ways.
+            "arcnow/arc-now-fee-hook@3.0.0",
+            "arcnow/arc-now-fee-hook@3.3.1",
             "arcnow/arc-now-fee-hook@2.0.0",
             "arcnow/arc-now-fee-hook@1.0.0",
-            "arcnow/arc-now-fee-hook@4.0.0",
+            "arcnow/arc-now-fee-hook@5.0.0",
             "arcnow/arc-token@1.0.0",
         ] {
             let err = check_hook_version(hook, refused).unwrap_err();
@@ -2122,5 +2228,9 @@ mod tests {
                 "{refused}: {err:?}"
             );
         }
+        let message =
+            check_hook_version(hook, "arcnow/arc-now-fee-hook@3.0.0").unwrap_err().to_string();
+        assert!(message.contains("retired multi-quote (v3) stack"), "{message}");
+        assert!(message.contains("arcnow/arc-now-fee-hook@4.x.x"), "{message}");
     }
 }

@@ -76,7 +76,7 @@ export class Curve {
    * ---------------------------------------------------------------------- */
 
   /**
-   * The curve's `VERSION()`, e.g. `"arcnow/bonding-curve@2.0.0"`. Read once and
+   * The curve's `VERSION()`, e.g. `"arcnow/bonding-curve@4.0.0"`. Read once and
    * cached: a curve has no upgrade path, so its address is its code for life.
    */
   async version(): Promise<string> {
@@ -450,20 +450,16 @@ export class Curve {
   }
 
   /**
-   * Split a fee exactly as a swap with these `ref` and `dev` addresses would.
+   * Split a fee exactly as a swap with this `ref` address would.
    *
-   * The same arithmetic the swap settles with. The four proportional shares are
-   * floored and the platform's is the residual, so the five total the fee
-   * exactly at every size — including a fee of one wei, where four shares are
-   * zero and the platform takes it all. Ref and dev resolve to the platform
-   * recipient when they are unset; the creator resolves to `token.creator()`,
+   * The same arithmetic the swap settles with. The three proportional shares
+   * are floored and the platform's is the residual, so the four total the fee
+   * exactly at every size — including a fee of one wei, where three shares are
+   * zero and the platform takes it all. The ref resolves to the platform
+   * recipient when it is unset; the creator resolves to `token.creator()`,
    * read now.
    */
-  async previewFeeSplit(
-    fee: QuoteAmount,
-    referrer?: Address,
-    developer?: Address,
-  ): Promise<FeeSplit> {
+  async previewFeeSplit(fee: QuoteAmount, referrer?: Address): Promise<FeeSplit> {
     requireSameQuote(fee, await this.quoteToken(), `the curve at ${this.address}`);
     return withMappedErrors(
       { functionName: "previewFeeSplit", address: this.address },
@@ -472,18 +468,16 @@ export class Curve {
           address: this.address,
           abi: bondingCurveAbi,
           functionName: "previewFeeSplit",
-          args: [fee.wad, referrer ?? zeroAddress, developer ?? zeroAddress],
+          args: [fee.wad, referrer ?? zeroAddress],
         });
         return {
           creator: split.creator,
           platform: split.platform,
           ref: split.ref,
-          dev: split.dev,
           protocol: split.protocol,
           creatorAmount: Quote.fromWad(fee.token, split.creatorWad),
           platformAmount: Quote.fromWad(fee.token, split.platformWad),
           refAmount: Quote.fromWad(fee.token, split.refWad),
-          devAmount: Quote.fromWad(fee.token, split.devWad),
           protocolAmount: Quote.fromWad(fee.token, split.protocolWad),
         };
       },
@@ -491,7 +485,7 @@ export class Curve {
   }
 
   /**
-   * The five-way fee split this curve snapshotted at construction.
+   * The four-way fee split this curve snapshotted at construction.
    *
    * Immutable and identical to the token's. No admin anywhere can change what a
    * launched curve charges or who it pays, which is why this design carries no
@@ -508,7 +502,6 @@ export class Curve {
         creatorShareBps: Bps.of(config.creatorShareBps),
         platformShareBps: Bps.of(config.platformShareBps),
         refShareBps: Bps.of(config.refShareBps),
-        devShareBps: Bps.of(config.devShareBps),
         protocolShareBps: Bps.of(config.protocolShareBps),
         platformRecipient: config.platformRecipient,
         protocolRecipient: config.protocolRecipient,
@@ -615,7 +608,6 @@ export class Curve {
       gasLimit: request.gasLimit,
     }, async () => {
       const referrer = request.referrer ?? zeroAddress;
-      const developer = request.developer ?? zeroAddress;
       // Passed through only when the caller chose one. Without it viem lets the
       // node estimate, and on a graduating buy the estimate is precisely the
       // limit at which the instant migration is starved and caught. See
@@ -627,7 +619,7 @@ export class Curve {
             address: this.address,
             abi: bondingCurveAbi,
             functionName: "buy",
-            args: [request.minTokensOut.wad, request.deadline.unixSeconds, referrer, developer],
+            args: [request.minTokensOut.wad, request.deadline.unixSeconds, referrer],
             value: request.quoteIn.wad,
             account,
             chain: this.ctx.chain,
@@ -638,8 +630,7 @@ export class Curve {
         // bare estimate, and a caller's gasLimit is raised to the safe minimum, never lowered.
         : await (async () => {
             const args = [
-              request.quoteIn.wad, request.minTokensOut.wad, request.deadline.unixSeconds,
-              referrer, developer,
+              request.quoteIn.wad, request.minTokensOut.wad, request.deadline.unixSeconds, referrer,
             ] as const;
             const limit = erc20GasLimit(
               await this.ctx.publicClient.estimateContractGas({
@@ -744,7 +735,7 @@ export class Curve {
         functionName: "buyWithQuote",
         args: [
           request.quoteIn.wad, request.minTokensOut.wad, request.deadline.unixSeconds,
-          request.referrer ?? zeroAddress, request.developer ?? zeroAddress,
+          request.referrer ?? zeroAddress,
         ],
         account,
         chain: this.ctx.chain,
@@ -802,7 +793,6 @@ export class Curve {
         request.minQuoteOut.wad,
         request.deadline.unixSeconds,
         request.referrer ?? zeroAddress,
-        request.developer ?? zeroAddress,
       ] as const;
       // An ERC-20 payout's fee shares pass contracts#23's gas guard: never the bare estimate.
       const gas = token.isNative

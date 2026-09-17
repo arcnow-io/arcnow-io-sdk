@@ -130,11 +130,16 @@ function missing(what: string): never {
 /** Constructors, the shipped snapshots, and the encoding. */
 export const CurveTemplate = {
   /**
-   * arcnow.io's own template on Arc testnet, as its platform `0xa78b737d…` was
-   * serving it when `curve-templates.json` was last read off the chain:
+   * arcnow.io's own template on **Arc testnet**, as its platform `0x912898e5…`
+   * was serving it when `curve-templates.json` was last read off the chain:
    * 1,000,000 supply, 790,931.776678561246309959 on the curve (79.09%), a 50 USDC
    * target, opening at 0.000016710135998192 USDC and graduating at
    * 0.000239156382570519.
+   *
+   * **Testnet's, not mainnet's.** arcnow.io's mainnet platform serves the
+   * reference template — the same prices at a thousand times the supply and
+   * the target — which is {@link CurveTemplate.reference} or
+   * `referenceFor("arc-mainnet")`.
    *
    * **A snapshot, not an authority.** Use it to seed a platform of your own;
    * never to describe a live platform or a token.
@@ -144,9 +149,9 @@ export const CurveTemplate = {
   },
 
   /**
-   * The snapshot of a named preset's platform template, or `undefined` where
-   * there is none to have read — `arc-mainnet`, which exists and has nothing
-   * deployed.
+   * The snapshot of a named preset's platform template — `"arc-testnet"` or
+   * `"arc-mainnet"`, which serve different templates — or `undefined` for a
+   * name no snapshot describes.
    */
   referenceFor(network: string): CurveTemplate | undefined {
     const id = Object.keys(ENTRIES).find((key) => ENTRIES[key]?.network === network);
@@ -156,11 +161,13 @@ export const CurveTemplate = {
   /**
    * arcnow-io/contracts' reference template, `ArcConstants REFERENCE_*`:
    * 1,000,000,000 supply and a 50,000 USDC target, the same prices as the
-   * testnet template at a thousand times the scale. No live platform serves it;
-   * The maintainers' template gate holds it equal to the contracts' `vectors.json`.
+   * testnet template at a thousand times the scale. **This is what arcnow.io's
+   * platform on Arc mainnet serves**, read off it as the `arc-mainnet` snapshot;
+   * the maintainers' template gate reads it back on every run and holds it
+   * equal to the contracts' `vectors.json`.
    */
   reference(): CurveTemplate {
-    return fromEntry("cpmm-reference") ?? missing("reference template (cpmm-reference)");
+    return fromEntry("arc-mainnet") ?? missing("reference template (arc-mainnet)");
   },
 
   /** `totalSupply - curveSupply`: what the template holds back for the pool. */

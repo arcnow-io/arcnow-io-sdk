@@ -67,7 +67,7 @@
   ],
   "curve": {
     "kind": "constant-product",
-    "bondingCurveVersion": "arcnow/bonding-curve@3.0.0",
+    "bondingCurveVersion": "arcnow/bonding-curve@4.0.0",
     "curveFactoryVersion": "arcnow/curve-factory@2.0.0"
   },
   "constants": {
@@ -82,7 +82,7 @@
     "multiplierWad": "14312054826865798100",
     "tradeFeeBps": "100",
     "bpsDenominator": "10000",
-    "launchFeeWad": "2000000000000000000",
+    "launchFeeWad": "0",
     "usdcErc20Decimals": "6",
     "usdcErc20Scale": "1000000000000",
     "maxReserveWad": "340282366920938463463374607431768211455"
@@ -700,13 +700,13 @@
   "launchVectorsComment": "ILaunchpad.quoteLaunch(initialBuyWad) on the reference template. totalCostWad is the exact msg.value launch() requires: launchFeeWad + initialBuyWad. The initial buy is an ORDINARY buy against a fresh curve and pays the ordinary trade fee on top of the flat launch fee.",
   "launchVectorCount": 7,
   "launchVectors": [
-    {"initialBuyWad": "0", "totalCostWad": "2000000000000000000", "tokensOutWad": "0", "tradeFeeWad": "0"},
-    {"initialBuyWad": "1", "totalCostWad": "2000000000000000001", "tokensOutWad": "0", "tradeFeeWad": "1"},
-    {"initialBuyWad": "1000000000000", "totalCostWad": "2000001000000000000", "tokensOutWad": "59245478316424913", "tradeFeeWad": "10000000000"},
-    {"initialBuyWad": "1000000000000000000", "totalCostWad": "3000000000000000000", "tokensOutWad": "59242213722555478302067", "tradeFeeWad": "10000000000000000"},
-    {"initialBuyWad": "100000000000000000000", "totalCostWad": "102000000000000000000", "tokensOutWad": "5892078984237226309200776", "tradeFeeWad": "1000000000000000000"},
-    {"initialBuyWad": "1000000000000000000000", "totalCostWad": "1002000000000000000000", "tokensOutWad": "56151213613389710834304675", "tradeFeeWad": "10000000000000000000"},
-    {"initialBuyWad": "200000000000000000000000", "totalCostWad": "200002000000000000000000", "tokensOutWad": "790931776678561246309958790", "tradeFeeWad": "505050505050505050506"}
+    {"initialBuyWad": "0", "totalCostWad": "0", "tokensOutWad": "0", "tradeFeeWad": "0"},
+    {"initialBuyWad": "1", "totalCostWad": "1", "tokensOutWad": "0", "tradeFeeWad": "1"},
+    {"initialBuyWad": "1000000000000", "totalCostWad": "1000000000000", "tokensOutWad": "59245478316424913", "tradeFeeWad": "10000000000"},
+    {"initialBuyWad": "1000000000000000000", "totalCostWad": "1000000000000000000", "tokensOutWad": "59242213722555478302067", "tradeFeeWad": "10000000000000000"},
+    {"initialBuyWad": "100000000000000000000", "totalCostWad": "100000000000000000000", "tokensOutWad": "5892078984237226309200776", "tradeFeeWad": "1000000000000000000"},
+    {"initialBuyWad": "1000000000000000000000", "totalCostWad": "1000000000000000000000", "tokensOutWad": "56151213613389710834304675", "tradeFeeWad": "10000000000000000000"},
+    {"initialBuyWad": "200000000000000000000000", "totalCostWad": "200000000000000000000000", "tokensOutWad": "790931776678561246309958790", "tradeFeeWad": "505050505050505050506"}
   ],
   "vectorCount": 504,
   "vectors": [

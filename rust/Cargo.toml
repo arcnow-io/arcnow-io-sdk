@@ -1,7 +1,7 @@
 [package]
 name = "arcnow-sdk"
 authors = ["arcnow.io <info@arcnow.io>"]
-version = "0.1.5"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.97.1"
 license = "GPL-3.0-or-later"

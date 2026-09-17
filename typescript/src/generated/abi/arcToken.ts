@@ -77,11 +77,6 @@ export const arcTokenAbi = [
                 "internalType": "uint256"
               },
               {
-                "name": "devShareBps",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
                 "name": "protocolShareBps",
                 "type": "uint256",
                 "internalType": "uint256"
@@ -337,11 +332,6 @@ export const arcTokenAbi = [
           },
           {
             "name": "refShareBps",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "devShareBps",
             "type": "uint256",
             "internalType": "uint256"
           },

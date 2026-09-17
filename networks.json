@@ -19,14 +19,15 @@
     "refuse to build a call to a null address and say which contract was missing.",
     "",
     "ONE STACK PER NETWORK (schemaVersion 4). `contracts` is the network's arcnow.io stack. Both SDKs price",
-    "only the multi-quote curve (arcnow/bonding-curve@3.x.x) and trade only under the claim-based fee hook",
-    "(arcnow/arc-now-fee-hook@3.x.x); any other version is refused by name rather than priced or traded.",
-    "`contractVersions` names the build at each address, key for key. `contracts.v4Router` is",
-    "UniswapV4Router04, bound to `v4.poolManager`; neither is arcnow.io's code.",
+    "only the fee-model curve (arcnow/bonding-curve@4.x.x) and trade only under the fee hook that takes",
+    "the pool's own 0.80% (arcnow/arc-now-fee-hook@4.x.x); any other version is refused by name rather",
+    "than priced or traded. `contractVersions` names the build at each address, key for key.",
+    "`contracts.v4Router` is UniswapV4Router04, bound to `v4.poolManager`; neither is arcnow.io's code.",
     "",
-    "WHILE pins.json contracts.deployment.status IS 'pending', the addresses below are the version-2",
-    "stack that is still live, recorded because they must equal the deployment record, and both SDKs",
-    "refuse them. The multi-quote stack replaces this block when it is broadcast.",
+    "BOTH NETWORKS ARE LIVE. Arc testnet and Arc mainnet each run the same build, deployed from the",
+    "contracts commit `contractsCommit` names and recorded in arcnow-io/contracts exports/addresses.json",
+    "at that commit; the two differ in their addresses, their quote tokens' addresses and the curve",
+    "template arcnow.io's platform serves (curve-templates.json).",
     "",
     "QUOTE TOKENS (`quoteTokens`). What a curve can be priced in: native USDC (address 0x000...000, the",
     "gas currency, 18 decimals) and the ERC-20s arcnow.io's quote registry allowlists. This list is",
@@ -34,7 +35,8 @@
     "amount costs no RPC call, and they ask the registry (QuoteRegistry.isQuoteToken) whether a quote is",
     "actually accepted. A quote the registry lists and this file does not is read on chain once per",
     "process. `native: true` marks the one quote paid as msg.value; every other quote is pulled with an",
-    "ERC-20 allowance, in raw units of its own decimals."
+    "ERC-20 allowance, in raw units of its own decimals. Launching is free in every quote: the",
+    "registry's launchFeeWad is 0 for each, and both SDKs read it from the registry rather than assume it."
   ],
   "schemaVersion": 4,
   "networks": {
@@ -44,9 +46,9 @@
       "rpcUrl": "https://rpc.testnet.arc.io",
       "explorerUrl": null,
       "$explorerComment": "Left null rather than guessed. Nothing in arcnow-io/contracts or arcnow-io/deployment names an explorer for Arc testnet, and a wrong link in an error message is worse than none.",
-      "deployedAtBlock": 62226550,
-      "$deployedAtBlockComment": "The block the multi-quote stack was deployed in, as arcnow-io/contracts exports/addresses.json records it. The version-2 stack it replaced was deployed at 61,911,405.",
-      "contractsCommit": "327f45b4763ab7f2ba5fc8cc0426b3d02e63f816",
+      "deployedAtBlock": 62386232,
+      "$deployedAtBlockComment": "The block the fee-model stack was deployed in on Arc testnet, as arcnow-io/contracts exports/addresses.json records it. The multi-quote (v3) stack it replaced was deployed at 62,226,550 and the version-2 stack at 61,911,405; neither is supported and the data of both was wiped.",
+      "contractsCommit": "e461106e2c6a0361b8c5463db292b73ad8691599",
       "native": {
         "$comment": "Arc's gas currency IS USDC, and msg.value is 18 decimals. See nativeUsdc in both SDKs.",
         "symbol": "USDC",
@@ -78,8 +80,8 @@
         "EURC is Circle's euro stablecoin on Arc testnet: a FiatToken proxy reporting 6 decimals,",
         "blocklistable and pausable by Circle. Its symbol and decimals are read back off the chain by",
         "the maintainers' template gate. Whether the registry accepts it is the registry's answer, not this",
-        "file's: EURC is registered on the deployed stack with a 2 EURC launch fee, and its admin can",
-        "deactivate it at any time, so both SDKs ask the registry rather than trust this list.",
+        "file's: EURC is registered on the deployed stack (block 62,389,230) with a launch fee of 0, and its",
+        "admin can deactivate it at any time, so both SDKs ask the registry rather than trust this list.",
         "",
         "allowanceSlot is the storage slot of the token's allowance mapping (FiatToken's `allowed`, 10).",
         "Both SDKs use it ONLY to state-override the router's allowance when pricing a pool buy with eth_call.",
@@ -87,18 +89,18 @@
         "and re-verified on every run of the TypeScript fork suite."
       ],
       "contracts": {
-        "launchpad": "0x3e4f0291f5e3ed7f8da839903e2984e6d69b1240",
-        "tokenFactory": "0xcc8d53c589e8eba2cd920cc1adb127662d4d2a2c",
-        "curveFactory": "0x4c016f2a6c4f9918bd6d18c3ad85d516c7e2c769",
-        "migratorRegistry": "0x799f5e4f00193f9ae4aa73535c455898269f48a8",
-        "platformRegistry": "0xd265496c0f4e7948db1813196993430eb54eb42c",
-        "quoteRegistry": "0x72405d10551d3e27a899dc3119cb356cb27bb9b3",
-        "arcnowPlatform": "0xa78b737da5758250cc95097425d3d3ba534ea47a",
+        "launchpad": "0x675a7a605911b0e3109eca580bc86e708199d952",
+        "tokenFactory": "0x801129207023305524ecd24b59524a39238d8fa2",
+        "curveFactory": "0xbd08ab0b37153ce918acca53628bfe7c9e4de584",
+        "migratorRegistry": "0x14300072ae1873d1163fb6e9f42485d3555b87f2",
+        "platformRegistry": "0x0b29d79e45715911eabb9f82eebaf42668993b26",
+        "quoteRegistry": "0x0428b6a3e1abe299e4497488d1137c3feda54250",
+        "arcnowPlatform": "0x912898e51f78e92f0a0d6efdefdee83fe7e8f4a4",
         "escrowMigrator": null,
         "v2Migrator": null,
         "v3Migrator": null,
-        "v4Migrator": "0xff0df62faec3767393b053ec37a238e7a9df0219",
-        "feeHook": "0xed68b7b5fb6995de0014d9a07b467e011f47a0cc",
+        "v4Migrator": "0x6bcfb74330a091ea5b06b4111ea5b572da0186b2",
+        "feeHook": "0xd70d5f977976cdca4a786b5b118be7458533a0cc",
         "v4Router": "0x139166ee61bb560ff34f05ae4a2b666ad98b9b2e"
       },
       "$contractsComment": [
@@ -119,17 +121,17 @@
       ],
       "contractVersions": {
         "launchpad": "arcnow/launchpad@3.0.0",
-        "tokenFactory": "arcnow/token-factory@1.0.0",
-        "curveFactory": "arcnow/curve-factory@3.0.0",
+        "tokenFactory": "arcnow/token-factory@2.0.0",
+        "curveFactory": "arcnow/curve-factory@4.0.0",
         "migratorRegistry": "arcnow/migrator-registry@1.1.0",
-        "platformRegistry": "arcnow/platform-registry@3.0.0",
+        "platformRegistry": "arcnow/platform-registry@4.0.0",
         "quoteRegistry": "arcnow/quote-registry@1.0.0",
-        "arcnowPlatform": "arcnow/platform-config@3.0.0",
+        "arcnowPlatform": "arcnow/platform-config@4.0.0",
         "escrowMigrator": null,
         "v2Migrator": null,
         "v3Migrator": null,
         "v4Migrator": "arcnow/uniswap-v4-migrator@2.0.0",
-        "feeHook": "arcnow/arc-now-fee-hook@3.0.0",
+        "feeHook": "arcnow/arc-now-fee-hook@4.0.0",
         "v4Router": null
       },
       "v4": {
@@ -155,9 +157,12 @@
           "",
           "NO QUOTER IS DEPLOYED ON THIS CHAIN. Both SDKs quote by eth_call-ing the router itself",
           "with state overrides and reading the BalanceDelta it returns, which is the trader's own",
-          "delta with the hook's 1% already applied. sdk/README.md documents the method."
+          "delta with the hook's 0.80% already applied; Uniswap's 0.20% LP fee is inside the pool's own price. sdk/README.md documents the method."
         ],
-        "poolManager": "0x06110b57dd9b82DD846ee0325fB81B284E1C6dD0"
+        "poolManager": "0x06110b57dd9b82DD846ee0325fB81B284E1C6dD0",
+        "lpFee": 2000,
+        "tickSpacing": 60,
+        "$lpFeeComment": "The LP fee (hundredths of a bip: 2000 = 0.20%) and tick spacing the v4 migrator bakes into every pool key it opens. Beside the hook's 0.80%, a migrated trade costs 1.00% - the same as on the curve. Both SDKs read fee and tickSpacing off the migrator for a given pool; these are recorded so a reader can see the total without a call."
       },
       "venues": {
         "$comment": "Which graduation targets this deployment actually offers. A token graduates into the migrator its curve snapshotted at launch; ask the curve, not this list, for a particular token.",
@@ -165,37 +170,47 @@
         "uniswapV2": false,
         "uniswapV3": false,
         "uniswapV4": true
-      }
+      },
+      "$contractsCommitComment": [
+        "The arcnow-io/contracts commit whose exports/addresses.json records this deployment, and the SDKs'",
+        "pin. The deployment manifest (arcnow-io/deployment deployments/arc-testnet.json) records the",
+        "broadcast as built from contracts@a514e0a; exports/abi and exports/vectors.json are byte-identical",
+        "at a514e0a and at e461106, which is what lets one pin describe both networks."
+      ]
     },
     "arc-mainnet": {
       "$comment": [
-        "ARC MAINNET DOES NOT EXIST YET, or at least arcnow.io is not on it. Every",
-        "address below is null ON PURPOSE and this entry is here ON PURPOSE.",
+        "ARC MAINNET, chain 5042, LIVE since 2026-09-16. The same fee-model build as Arc testnet, deployed",
+        "from the contracts commit `contractsCommit` names and recorded in arcnow-io/contracts",
+        "exports/addresses.json chains[\"5042\"] at that commit. This is real money: there is no reset, and a",
+        "redeploy would be a new stack in a new block here, never an edit of these rows.",
         "",
-        "A preset that is absent gets a caller a 'no such network' error they read as",
-        "'the SDK is behind' and work around by pasting addresses from somewhere. A",
-        "preset with plausible addresses in it gets them a transaction to an account",
-        "that does not exist. A preset that is present, complete in shape and null in",
-        "every address gets them an error that says exactly what is true: nothing is",
-        "deployed here, pass your own addresses if you know better.",
-        "",
-        "Both SDKs therefore RESOLVE this network and REFUSE to use it, naming the",
-        "contracts that are missing. Nobody invents an address to fill it in: when",
-        "arcnow.io deploys to a mainnet, the values arrive here from the deployment",
-        "record, with the contracts commit that produced them."
+        "What differs from testnet, beyond the addresses: EURC is Circle's mainnet EURC; arcnow.io's platform",
+        "serves the REFERENCE template (1,000,000,000 supply, 50,000 quote to graduate) for both quotes rather",
+        "than testnet's 1,000,000 / 50; and the explorer exists. Everything else - the curve maths, the 1.00%",
+        "curve fee and its split, the pool's 0.80% + 0.20%, the free launch - is the same code at other addresses."
       ],
       "name": "arc-mainnet",
-      "chainId": null,
-      "rpcUrl": null,
-      "explorerUrl": null,
-      "deployedAtBlock": null,
-      "contractsCommit": null,
+      "chainId": 5042,
+      "rpcUrl": "https://rpc.mainnet.arc.io",
+      "explorerUrl": "https://explorer.arc.io",
+      "deployedAtBlock": 21179866,
+      "$deployedAtBlockComment": "The block the fee-model stack was deployed in on Arc mainnet (nine transactions from it), as arcnow-io/contracts exports/addresses.json records. The router landed at 21,180,414, EURC was registered at 21,180,530 and its template set at 21,180,663.",
+      "contractsCommit": "e461106e2c6a0361b8c5463db292b73ad8691599",
+      "$contractsCommitComment": [
+        "The arcnow-io/contracts commit whose exports/addresses.json records this deployment, and the SDKs'",
+        "pin. The deployment manifest (arcnow-io/deployment deployments/arc-mainnet.json) records the",
+        "broadcast as built from contracts@5f1ceb4; exports/abi and exports/vectors.json are byte-identical",
+        "at 5f1ceb4 and at e461106."
+      ],
       "native": {
+        "$comment": "Arc's gas currency IS USDC, and msg.value is 18 decimals. See nativeUsdc in both SDKs.",
         "symbol": "USDC",
         "decimals": 18
       },
       "usdcErc20": {
-        "address": null,
+        "$comment": "The SAME asset through an ERC-20 interface, reporting 6 decimals, at the same predeploy address as on testnet. It does NOT pay for gas and no arcnow.io contract reads it.",
+        "address": "0x3600000000000000000000000000000000000000",
         "decimals": 6
       },
       "quoteTokens": [
@@ -205,43 +220,83 @@
           "name": "USD Coin",
           "decimals": 18,
           "native": true
+        },
+        {
+          "address": "0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1",
+          "symbol": "EURC",
+          "name": "EURC",
+          "decimals": 6,
+          "native": false,
+          "allowanceSlot": 10
         }
       ],
+      "$quoteTokensComment": [
+        "EURC is Circle's euro stablecoin on Arc mainnet, 0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1: a FiatToken",
+        "proxy reporting 6 decimals, blocklistable and pausable by Circle. Registered on the deployed stack at",
+        "block 21,180,530 with a launch fee of 0; its admin can deactivate it at any time, so both SDKs ask the",
+        "registry rather than trust this list. Its symbol and decimals are read back by the maintainers'",
+        "template gate.",
+        "",
+        "allowanceSlot 10 is FiatToken's `allowed` mapping, the same implementation family as testnet's EURC;",
+        "both SDKs use it ONLY to state-override the router's allowance when pricing a pool buy with eth_call,",
+        "and a wrong slot fails that quote loudly rather than mis-pricing it."
+      ],
       "contracts": {
-        "launchpad": null,
-        "tokenFactory": null,
-        "curveFactory": null,
-        "migratorRegistry": null,
-        "platformRegistry": null,
-        "quoteRegistry": null,
-        "arcnowPlatform": null,
+        "launchpad": "0xae1e5558ab71e851ce44f5c0f12ebeaf3db9dae3",
+        "tokenFactory": "0x5e920c86ed0415ced9c4b3ddaad3203d48187341",
+        "curveFactory": "0xd75d46bd1974267d7b1a028be72553fd4f409072",
+        "migratorRegistry": "0xd1f3dbd38a82376b60555f57934136760c5b25e9",
+        "platformRegistry": "0x0397b1da5ff68525403c9830178606f236c44cc6",
+        "quoteRegistry": "0x969a6a598efb4743293e8ad3df56a065fd990f6b",
+        "arcnowPlatform": "0xe3c7cd3e98af47de518740c7cfef9fc7064b2ef9",
         "escrowMigrator": null,
         "v2Migrator": null,
         "v3Migrator": null,
-        "v4Migrator": null,
-        "feeHook": null,
+        "v4Migrator": "0x64dde435db5d5e57965b27488ac8dee734ef0311",
+        "feeHook": "0x3cf7b568c0731c6efdec591d80aa55af51e220cc",
+        "v4Router": "0x4a142209396e7b9ba4c8527ff037fc73452b287f"
+      },
+      "$contractsComment": [
+        "arcnowPlatform is arcnow.io's OWN PlatformConfig on mainnet, the default this SDK launches under",
+        "when a caller names no other. escrowMigrator, v2Migrator and v3Migrator are null by design: Arc",
+        "publishes no wrapped-native token, so mainnet is v4-only and nothing custodial exists on chain.",
+        "v4Router is UniswapV4Router04 from z0r0z/v4-router, deployed unmodified by arcnow.io at its CREATE2",
+        "address (block 21,180,414), bound to v4.poolManager."
+      ],
+      "contractVersions": {
+        "launchpad": "arcnow/launchpad@3.0.0",
+        "tokenFactory": "arcnow/token-factory@2.0.0",
+        "curveFactory": "arcnow/curve-factory@4.0.0",
+        "migratorRegistry": "arcnow/migrator-registry@1.1.0",
+        "platformRegistry": "arcnow/platform-registry@4.0.0",
+        "quoteRegistry": "arcnow/quote-registry@1.0.0",
+        "arcnowPlatform": "arcnow/platform-config@4.0.0",
+        "escrowMigrator": null,
+        "v2Migrator": null,
+        "v3Migrator": null,
+        "v4Migrator": "arcnow/uniswap-v4-migrator@2.0.0",
+        "feeHook": "arcnow/arc-now-fee-hook@4.0.0",
         "v4Router": null
       },
-      "contractVersions": {
-        "launchpad": null,
-        "tokenFactory": null,
-        "curveFactory": null,
-        "migratorRegistry": null,
-        "platformRegistry": null,
-        "quoteRegistry": null,
-        "arcnowPlatform": null,
-        "escrowMigrator": null,
-        "v2Migrator": null,
-        "v3Migrator": null,
-        "v4Migrator": null,
-        "feeHook": null,
-        "v4Router": null
+      "v4": {
+        "$comment": [
+          "WHERE A GRADUATED TOKEN IS TRADED ON MAINNET. poolManager is the one Uniswap v4 PoolManager on Arc",
+          "mainnet - the v4-core Release build, verified genuine by arcnow-io/contracts on 2026-09-16 - and",
+          "every graduated token's liquidity is there permanently: positions burned, migrator immutable.",
+          "arcnow.io's router (contracts.v4Router) is bound to it. No quoter is deployed; both SDKs quote by",
+          "eth_call-ing the router with state overrides and reading the BalanceDelta, which carries the hook's",
+          "0.80% and the pool's 0.20% LP fee already applied."
+        ],
+        "poolManager": "0x8366a39CC670B4001A1121B8F6A443A643e40951",
+        "lpFee": 2000,
+        "tickSpacing": 60
       },
       "venues": {
+        "$comment": "Which graduation targets this deployment actually offers. A token graduates into the migrator its curve snapshotted at launch; ask the curve, not this list, for a particular token.",
         "escrow": false,
         "uniswapV2": false,
         "uniswapV3": false,
-        "uniswapV4": false
+        "uniswapV4": true
       }
     }
   }

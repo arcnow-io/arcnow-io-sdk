@@ -143,13 +143,18 @@ fn bps_of_fee_and_bps_of_trade_are_the_same_number_meaning_different_things() {
     assert_eq!(creator.of_trade_equivalent(trade_fee).percent_string(), "0.30");
     assert_eq!(trade_fee.percent_string(), "1.00");
 
-    // And the arcnow.io defaults, all five, restated as a share of a trade.
+    // And the arcnow.io defaults, all four, restated as a share of a trade.
     let of_trade = |bps| Bps::of_fee(bps).of_trade_equivalent(trade_fee).percent_string();
     assert_eq!(of_trade(3_000), "0.30"); // creator
-    assert_eq!(of_trade(2_500), "0.25"); // platform (the residual)
+    assert_eq!(of_trade(3_500), "0.35"); // platform (the residual)
     assert_eq!(of_trade(1_000), "0.10"); // ref
-    assert_eq!(of_trade(1_000), "0.10"); // dev
     assert_eq!(of_trade(2_500), "0.25"); // protocol
+    // And the pool's, as shares of the hook's 0.80%.
+    let pool_fee = arcnow_sdk::POOL_TRADE_FEE_BPS;
+    let of_pool = |bps| Bps::of_fee(bps).of_trade_equivalent(pool_fee).percent_string();
+    assert_eq!(of_pool(5_000), "0.40"); // creator
+    assert_eq!(of_pool(1_875), "0.15"); // platform
+    assert_eq!(of_pool(3_125), "0.25"); // protocol
 }
 
 #[test]

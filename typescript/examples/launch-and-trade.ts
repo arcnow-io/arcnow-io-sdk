@@ -25,8 +25,10 @@
  *
  * ## What it costs
  *
- * Real testnet USDC leaves the key: the 2 USDC flat launch fee, plus whatever
- * initial buy and follow-on buy you choose below, plus gas. The script prints
+ * Real testnet USDC leaves the key: launching itself is free (the registry's
+ * launch fee is zero, and the script reads it rather than assuming it), but the
+ * initial buy and follow-on buy you choose below cost what they cost, plus
+ * gas. The script prints
  * the total before it spends anything and gives you a moment to stop it. The
  * sell at the end returns most — not all — of the trading capital: the curve
  * charges 1% on the way in and 1% on the way out, and the price you sell back
@@ -82,8 +84,8 @@ async function main(): Promise<void> {
       + "to a funded Arc testnet key and run it again:\n\n"
       + "    export ARCNOW_PRIVATE_KEY=0x…\n"
       + "    npm run example\n\n"
-      + "The account needs enough native USDC for a 2 USDC launch fee, the buys configured\n"
-      + "at the top of this file, and gas. On Arc, gas is paid in USDC too.",
+      + "The account needs enough native USDC for the buys configured at the top of this\n"
+      + "file, and gas (launching is free). On Arc, gas is paid in USDC too.",
     );
     process.exitCode = 1;
     return;
@@ -152,7 +154,7 @@ async function main(): Promise<void> {
   const tradeFee = await client.launchpad.tradeFeeBps();
   const quote = await client.launchpad.quoteLaunch(params);
 
-  console.log(`launch fee     ${launchFee.format()}   (flat, immutable)`);
+  console.log(`launch fee     ${launchFee.format()}   (flat; read from the quote registry)`);
   console.log(
     `trade fee      ${tradeFee.toString()} = ${tradeFee.percentOfFee()}% of every trade`,
   );
@@ -243,7 +245,7 @@ async function main(): Promise<void> {
     quoteIn: FOLLOW_ON_BUY,
     minTokensOut: minTokensOutFromQuote(buyQuote, SLIPPAGE),
     deadline: deadline(),
-    // referrer / developer are optional and credit part of the fee you are
+    // referrer is optional and credits part of the fee you are
     // already paying. Omitted here, so both shares go to the platform.
   });
   console.log(`filled         ${bought.tokensOut.format(params.symbol)} for `
@@ -323,7 +325,7 @@ async function main(): Promise<void> {
    * ---------------------------------------------------------------------- */
 
   line();
-  console.log("6. where that fee went — five ways, in bps OF THE FEE");
+  console.log("6. where that fee went — four ways, in bps OF THE FEE");
   line();
 
   const split = await curve.previewFeeSplit(sold.fee);
@@ -332,7 +334,6 @@ async function main(): Promise<void> {
     ["creator", split.creatorAmount, config.creatorShareBps, split.creator],
     ["platform", split.platformAmount, config.platformShareBps, split.platform],
     ["ref", split.refAmount, config.refShareBps, split.ref],
-    ["dev", split.devAmount, config.devShareBps, split.dev],
     ["protocol", split.protocolAmount, config.protocolShareBps, split.protocol],
   ];
   console.log(`fee            ${sold.fee.format()}`);

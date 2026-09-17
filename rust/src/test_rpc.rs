@@ -444,7 +444,7 @@ mod tests {
     // ------------------------------------------------------------ the curve
 
     fn a_version_3_eurc_curve(mock: &MockRpc) {
-        mock.returns::<BondingCurve::VERSIONCall>(CURVE, "arcnow/bonding-curve@3.0.0".to_owned());
+        mock.returns::<BondingCurve::VERSIONCall>(CURVE, "arcnow/bonding-curve@4.0.0".to_owned());
         mock.returns::<BondingCurve::quoteTokenCall>(CURVE, EURC);
         mock.returns::<BondingCurve::quoteDecimalsCall>(CURVE, 6);
     }
@@ -505,7 +505,6 @@ mod tests {
                 minTokensOutWad: u(6_000),
                 deadline: u(1_800_000_000),
                 r#ref: SPENDER,
-                dev: Address::ZERO,
             }
             .abi_encode()
         );
@@ -873,7 +872,7 @@ mod tests {
         mock.returns::<UniswapV4Router04::poolManagerCall>(router, manager);
         mock.returns::<ArcNowFeeHook::VERSIONCall>(
             hook,
-            "arcnow/arc-now-fee-hook@3.0.0".to_owned(),
+            "arcnow/arc-now-fee-hook@4.0.0".to_owned(),
         );
         (router, hook)
     }
@@ -902,7 +901,7 @@ mod tests {
         let quote = client.pool(TOKEN).quote_buy_as(euros("1"), OWNER).await.unwrap();
         assert_eq!(quote.quote_in, euros("1"));
         assert_eq!(quote.tokens_out, Tokens::from_wad(u(123_456_000_000_000_000_000)));
-        assert_eq!(quote.fee_quote, euros("0.01"));
+        assert_eq!(quote.fee_quote, euros("0.008"), "the hook's 0.80% of 1 EURC");
 
         let (_, params) = mock
             .requests()
@@ -1159,7 +1158,9 @@ mod tests {
         assert!(sent[0]["to"].as_str().unwrap().eq_ignore_ascii_case(&router.to_string()));
     }
 
-    /// A v3 launchpad and platform whose EURC template targets 50 EURC.
+    /// A launchpad and platform whose EURC template targets 50 EURC, and whose
+    /// registry charges a 2 EURC launch fee - a registry-defined value, so the
+    /// path that pays one is exercised even though arcnow.io's registries charge 0.
     fn a_eurc_launchpad(mock: &MockRpc, config: &NetworkConfig) -> Address {
         use crate::bindings::platform_config::{IPlatformConfig, PlatformConfig};
         let launchpad = config.contracts.launchpad.unwrap();
@@ -1167,7 +1168,7 @@ mod tests {
         mock.returns::<Launchpad::VERSIONCall>(launchpad, "arcnow/launchpad@3.0.0".to_owned());
         mock.returns::<PlatformConfig::VERSIONCall>(
             platform,
-            "arcnow/platform-config@3.0.0".to_owned(),
+            "arcnow/platform-config@4.0.0".to_owned(),
         );
         mock.returns::<Launchpad::quoteLaunchCall>(
             launchpad,
@@ -1250,7 +1251,7 @@ mod tests {
         mock.returns::<Launchpad::VERSIONCall>(launchpad, "arcnow/launchpad@3.0.0".to_owned());
         mock.returns::<PlatformConfig::VERSIONCall>(
             platform,
-            "arcnow/platform-config@3.0.0".to_owned(),
+            "arcnow/platform-config@4.0.0".to_owned(),
         );
         mock.returns::<Launchpad::quoteLaunchCall>(
             launchpad,

@@ -15,7 +15,7 @@
  * - a **curve trade always pays `msg.sender`** — there is no recipient argument
  *   anywhere in the curve — so naming a {@link TradeBuyRequest.recipient} on the
  *   curve side is **refused**, not dropped;
- * - a **pool swap has no referrer and no developer** — a pool has no argument
+ * - a **pool swap has no referrer** — a pool has no argument
  *   for them, and a hook that read them out of `hookData` would let any trader
  *   name themselves the referrer and skim the share — so naming either on the
  *   pool side is **refused**, not dropped;
@@ -136,12 +136,11 @@ export interface TradeBuyRequest {
    */
   readonly recipient?: Address | undefined;
   /**
-   * A referrer to credit out of the fee. **Curve only.** A pool swap pays ref
-   * and dev to the platform recipient because a pool has no argument for them.
+   * A referrer to credit out of the fee. **Curve only.** A pool's fee has no
+   * referrer share at all — the hook's split is creator, platform and protocol
+   * — because a pool has no argument to name one with.
    */
   readonly referrer?: Address | undefined;
-  /** An integrating developer to credit out of the fee. **Curve only**, same reason. */
-  readonly developer?: Address | undefined;
   /**
    * An explicit gas limit. **Curve only**, and it matters there: a buy that
    * graduates the curve succeeds whether or not its migration does, so
@@ -169,8 +168,6 @@ export interface TradeSellRequest {
   readonly recipient?: Address | undefined;
   /** A referrer to credit out of the fee. **Curve only.** */
   readonly referrer?: Address | undefined;
-  /** An integrating developer to credit out of the fee. **Curve only.** */
-  readonly developer?: Address | undefined;
 }
 
 /* -------------------------------------------------------------------------- *
@@ -350,7 +347,6 @@ export class Trade {
       minTokensOut: request.minTokensOut,
       deadline: request.deadline,
       ...(request.referrer === undefined ? {} : { referrer: request.referrer }),
-      ...(request.developer === undefined ? {} : { developer: request.developer }),
       ...(request.gasLimit === undefined ? {} : { gasLimit: request.gasLimit }),
     });
     return { venue: "curve", ...result };
@@ -382,7 +378,6 @@ export class Trade {
       minQuoteOut: request.minQuoteOut,
       deadline: request.deadline,
       ...(request.referrer === undefined ? {} : { referrer: request.referrer }),
-      ...(request.developer === undefined ? {} : { developer: request.developer }),
     });
     return { venue: "curve", ...result };
   }
@@ -403,14 +398,12 @@ export class Trade {
   private refuseCurveOnly(
     request: {
       referrer?: Address | undefined;
-      developer?: Address | undefined;
       gasLimit?: bigint | undefined;
     },
     what: string,
   ): void {
     const named: string[] = [];
     if (request.referrer !== undefined) named.push("referrer");
-    if (request.developer !== undefined) named.push("developer");
     if (request.gasLimit !== undefined) named.push("gasLimit");
     if (named.length === 0) return;
     throw new ArcNowError({
@@ -418,9 +411,9 @@ export class Trade {
       message:
         `${named.join(" and ")} ${named.length === 1 ? "is" : "are"} a curve-only option `
         + `and this token has graduated, so the ${what} goes through the Uniswap v4 `
-        + "router. A pool swap has no argument for a referrer or a developer: the hook "
-        + "pays both shares to the platform recipient, deliberately, because a hook that "
-        + "read them out of hookData would let any trader name themselves the referrer and "
+        + "router. A pool swap has no argument for a referrer and the hook's split has no "
+        + "referrer share — creator, platform and protocol only — deliberately, because a hook "
+        + "that read one out of hookData would let any trader name themselves the referrer and "
         + "skim the share. And gasLimit guards a graduation that cannot happen twice. This "
         + "is refused rather than dropped so that nobody is promised a fee share the chain "
         + "was never asked for.",

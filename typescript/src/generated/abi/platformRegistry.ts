@@ -99,11 +99,6 @@ export const platformRegistryAbi = [
             "internalType": "uint256"
           },
           {
-            "name": "devShareBps",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
             "name": "protocolShareBps",
             "type": "uint256",
             "internalType": "uint256"
@@ -264,11 +259,6 @@ export const platformRegistryAbi = [
         "internalType": "uint256"
       },
       {
-        "name": "devShareBps_",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
         "name": "defaultMigrator_",
         "type": "address",
         "internalType": "address"
@@ -402,12 +392,6 @@ export const platformRegistryAbi = [
       },
       {
         "name": "refShareBps",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "devShareBps",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"

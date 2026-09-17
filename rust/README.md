@@ -83,6 +83,30 @@ use arcnow_sdk::Bps;
 assert_eq!(Bps::of_fee(3_000).of_trade_equivalent(Bps::of_trade(100)), Bps::of_trade(30));
 ```
 
+### What a trade costs, and who is paid
+
+A trade costs **1.00%** on both sides of graduation. On the curve the whole 1%
+is arcnow.io's fee, split four ways; in the pool the hook takes **0.80%** and
+Uniswap's LP fee is the other **0.20%**, so the trader pays the same 1.00%.
+Launching is **free**: the quote registry's launch fee is 0 for every quote on
+both networks (`launchpad.launch_fee(quote)` reads it rather than assuming it).
+
+| party (`FeeShare`) | on the curve, bps of the 1% | of a trade | in the pool, bps of the hook's 0.80% | of a trade |
+| --- | --- | --- | --- | --- |
+| `Creator` | 3000 | 0.30% | 5000 | 0.40% |
+| `Platform` | 3500 (the residual) | 0.35% | 1875 | 0.15% |
+| `Ref` | 1000 | 0.10% | 0 (a pool has no referrer) | — |
+| `Protocol` | 2500 | 0.25% | 3125 | 0.25% |
+| Uniswap LP fee | — | — | `POOL_LP_FEE_PIPS` = 2000 pips | 0.20% |
+
+The curve column is arcnow.io's own platform's split; another platform picks its
+own creator and ref shares within 7500 bps and the platform's is the residual.
+The pool column is the same for every pool arcnow.io's migrator opens, written
+by the hook at registration and read back with `pool.fee_config()`;
+`pool.hook_fee_bps()` reads the 80. There is no developer share anywhere: the
+`FeeShare` enum is `Creator = 0, Platform = 1, Ref = 2, Protocol = 3`, in the
+contracts' order, which is what a `FeePaid` log's `share` topic carries.
+
 ---
 
 ## Connect
@@ -126,28 +150,30 @@ let config = NetworkConfig::custom("my-chain", 5_042_002, "http://…", contract
 let client = Client::builder().network(Network::Custom(Box::new(config))).build().await?;
 ```
 
-### The mainnet gap, on purpose
+### Two networks, one build
 
-`Network::ArcMainnet` **resolves** and then **refuses**, naming the contracts
-that are missing:
+| preset | chain id | RPC | explorer | arcnow.io's template |
+| --- | --- | --- | --- | --- |
+| `Network::ArcTestnet` | 5042002 | `https://rpc.testnet.arc.io` | — | 1,000,000 supply, 50 to graduate |
+| `Network::ArcMainnet` | 5042 | `https://rpc.mainnet.arc.io` | `https://explorer.arc.io` | 1,000,000,000 supply, 50,000 to graduate |
 
-```text
-the arc-mainnet preset resolves and has no deployment behind it: launchpad,
-tokenFactory, curveFactory, migratorRegistry, platformRegistry, arcnowPlatform
-are not deployed there. Nothing in this crate will invent an address for a chain
-it has not been told about, and the zero address is a real account on Arc that
-would send money nowhere. Either target arc-testnet, or build a client from
-Network::Custom with the addresses you know.
+Both carry a complete deployment of the same contracts build, at different
+addresses, each with native USDC and its own EURC as quote tokens. **Mainnet is
+real money**: the same code that trades on testnet trades there with no further
+switch, so read `client.network().chain_id` back before signing anything you
+did not mean to. The client refuses an endpoint whose chain id is not the
+preset's with `Error::ChainIdMismatch`.
+
+```rust
+let client = Client::builder().network(Network::ArcMainnet).signer(signer).build().await?;
 ```
 
-That is deliberate. An absent preset gets you a "no such network" error, which
-reads as "the SDK is behind" and is worked around by pasting addresses from
-somewhere. A preset with plausible addresses gets you a transaction to an account
-that does not exist. This gets you the truth.
-
-`null` in `networks.json` means **not deployed on this chain**, and on Arc
-testnet `escrowMigrator`, `v2Migrator` and `v3Migrator` are null because the
-chain genuinely offers none of them — not because nobody filled them in.
+`null` in `networks.json` means **not deployed on this chain**, and on both
+networks `escrowMigrator`, `v2Migrator` and `v3Migrator` are null because Arc
+publishes no wrapped-native token — the chain genuinely offers none of them, not
+because nobody filled them in. A custom configuration with a core contract
+missing is refused by `Error::NetworkNotDeployed`, naming every gap, rather than
+sent to the zero address.
 
 ---
 
@@ -170,17 +196,20 @@ slope, so a buy pays a rising price across its own order. Quote instead.
 ### One curve
 
 Every arcnow.io bonding curve is the constant-product curve,
-`arcnow/bonding-curve@2.x.x`: `k = r0 · y0`, `Y = y0 − sold`,
+`arcnow/bonding-curve@4.x.x`: `k = r0 · y0`, `Y = y0 − sold`,
 `C(Y) = ceil(k / Y)`, and `state.params` is `CurveParams { r0_wad, y0_wad }`.
 
 **Any other version is refused, never priced.** `curve.state()`, `params()`,
 `quote_buy`/`quote_sell`, `buy`/`sell`/`migrate` all read `VERSION()` first, and a
-bonding curve of another version — the retired linear `@1.x.x` included, or a
-future `@3.x.x` — is `Error::UnknownCurveVersion { version }`, before any maths
-and before any trade is sent.
+bonding curve of another version is `Error::UnknownCurveVersion { version }`,
+before any maths and before any trade is sent. That includes the retired
+multi-quote `@3.x.x` — the build that carried a developer share, whose `buy`,
+`sell` and `previewFeeSplit` took a fourth address this ABI does not have; its
+contracts are gone from arcnow.io's networks and the refusal says so by name —
+the single-quote `@2.x.x`, the linear `@1.x.x`, and any future `@5.x.x`.
 
 **An address that is not a bonding curve at all is a different refusal.** A token
-(`arcnow/arc-token@1.0.0`), any other arcnow.io contract, or an address that
+(`arcnow/arc-token@2.0.0`), any other arcnow.io contract, or an address that
 answers no `VERSION()` — no code, or not arcnow.io's — is
 `Error::AddressIsNotACurve { address, version }`, whose message names what the
 address says it is (for a token: use `Token::curve()`, or `Client::trade`). A
@@ -230,8 +259,10 @@ println!("token {} curve {}", launched.token, launched.curve);
 ```
 
 **The initial buy is an ordinary buy.** It pays the 1% trade fee on top of the
-flat launch fee; there is no fee-free entry into the curve. `quote_launch`
-reports the two charges separately so you can name both.
+launch fee; there is no fee-free entry into the curve. `quote_launch` reports the
+two charges separately so you can name both — and the launch fee is **zero** on
+arcnow.io's deployments, read off the quote registry rather than assumed, so a
+launch costs exactly its initial buy plus gas.
 
 `predict_addresses` gives the token and curve a launch *would* produce. It is
 pure prediction and is valid **only** for that creator's current launch nonce and
@@ -303,7 +334,6 @@ let platform = NewPlatform {
     admin, fee_recipient,
     creator_share_bps: Bps::of_fee(3_000),
     ref_share_bps: Bps::of_fee(1_000),
-    dev_share_bps: Bps::of_fee(1_000),
     default_migrator,
     curve: CurveTemplate::arcnow_defaults(),
 };
@@ -312,10 +342,10 @@ let (address, tx) = client.platform_registry()?.register_platform(&platform).awa
 ```
 
 **`NewPlatform` has no platform-share field, and that is the point.** The
-platform's own cut is the **residual**: `10000 - protocol - creator - ref - dev`,
+platform's own cut is the **residual**: `10000 - protocol - creator - ref`,
 computed on demand and never an input anywhere in the contracts. A platform
-allocates at most **7500 bps** across creator, ref and dev, and whatever it does
-not allocate is its own.
+allocates at most **7500 bps** across creator and ref, and whatever it does not
+allocate is its own — arcnow.io's own platform keeps 3500.
 
 The 7500 is measured against the protocol's **maximum** share (2500), not its
 current one, so a protocol admin lowering their cut widens every platform's
@@ -323,9 +353,8 @@ residual and can never invalidate a stored configuration.
 
 ```rust
 // See your own cut without deploying anything.
-let mine = platform_share_bps(Bps::of_fee(3_000), Bps::of_fee(1_000), Bps::of_fee(1_000),
-                              Bps::of_fee(2_500));
-assert_eq!(mine, Bps::of_fee(2_500));
+let mine = platform_share_bps(Bps::of_fee(3_000), Bps::of_fee(1_000), Bps::of_fee(2_500));
+assert_eq!(mine, Bps::of_fee(3_500));
 ```
 
 **`register_platform` is callable only by the registry's `protocolAdmin`.** An
@@ -335,28 +364,30 @@ surprise in this API.
 **A curve template is not a constant, and this crate treats it as one nowhere.**
 It is per-platform state, replaceable by that platform's admin in a single
 transaction, and snapshotted immutably onto every curve at launch. Ask
-`client.platform(addr).curve_parameters()` what a **new launch** will get, and
-`client.curve(addr).state()` what an **existing token** got — arcnow.io's
-platform moved on 2026-09-13, total supply from 1e9 to 1e6 and the target from
-50,000 USDC to 50, and a curve launched before that keeps the old one for as long
-as it exists.
+`client.platform(addr).curve_parameters_for(quote)` what a **new launch** will
+get, and `client.curve(addr).state()` what an **existing token** got — a
+platform's admin can move its template at any time, and a curve launched before
+that keeps the old one for as long as it exists.
 
 **A template is `y0`-shaped.** `CurveTemplate` carries `total_supply`,
-`curve_supply`, `y0`, `r0`, `target` and `initial_price`. `curve_parameters()`,
+`curve_supply`, `y0`, `r0`, `target` and `initial_price`. `curve_parameters_for`,
 `check_curve_parameters` and `register_platform` read the contract's `VERSION()`
-first and refuse anything but `arcnow/platform-config@2.x.x` /
-`arcnow/platform-registry@2.x.x` with `Error::UnknownCurveVersion` before encoding
+first and refuse anything but `arcnow/platform-config@4.x.x` /
+`arcnow/platform-registry@4.x.x` with `Error::UnknownCurveVersion` before encoding
 anything.
 
-`CurveTemplate::arcnow_defaults()` is a **reference snapshot** of arcnow.io's
-platform, for the one job a live read cannot do: seeding a platform of your own:
-1e6 total supply, 790,931.78 on the curve (79.09%), a 50 USDC target, `Y0` and
-`R0` placed so that the 209,068.22 tokens held back are exactly what 50 USDC buys
-at the last price of 0.000239156382570519. `CurveTemplate::reference()` is the
-contracts' 1e9 / 50,000 USDC reference at the same prices. **Do not re-derive
-either in floating point** — a recomputation is refused by `PlatformConfig` with
+The two shipped snapshots are what arcnow.io's own platform serves on each
+network, for the one job a live read cannot do: seeding a platform of your own.
+`CurveTemplate::arcnow_defaults()` (= `reference_for("arc-testnet")`) is the
+testnet template: 1e6 total supply, 790,931.78 on the curve (79.09%), a 50 USDC
+target, `Y0` and `R0` placed so that the 209,068.22 tokens held back are exactly
+what 50 USDC buys at the last price of 0.000239156382570519.
+`CurveTemplate::reference()` (= `reference_for("arc-mainnet")`) is the contracts'
+1e9 / 50,000 USDC reference at the same prices, which arcnow.io's **mainnet**
+platform serves for native USDC and for EURC alike. **Do not re-derive either in
+floating point** — a recomputation is refused by `PlatformConfig` with
 `PoolReserveMismatch`. The values live in `../curve-templates.json`, one copy for
-both SDKs, checked against the live platform before every release and refused on
+both SDKs, checked against each live platform before every release and refused on
 a single wei of drift.
 
 Check a candidate of your own with
@@ -430,12 +461,13 @@ one. When the instant migration succeeded it reverts with
 strand a curve.
 
 Where a curve graduates *to* is its own snapshotted `state.migrator`, chosen at
-launch and immutable. On Arc testnet that is the Uniswap v4 migrator; v2, v3 and
-escrow are not deployed there. **Ask the curve, not a network-wide list.**
+launch and immutable. On both Arc networks that is the Uniswap v4 migrator; v2,
+v3 and escrow are not deployed there. **Ask the curve, not a network-wide list.**
 
-After migration the same 1% is charged by `ArcNowFeeHook` inside the v4 pool's
-swaps, still denominated in native USDC. Ref and dev have no address in a pool,
-so both shares follow the zero rule to the platform recipient.
+After migration a trade still costs 1.00%, the pool's way: `ArcNowFeeHook` takes
+0.80% inside the v4 pool's swaps, in the pool's quote, split creator 5000 /
+platform 1875 / protocol 3125 bps of that fee, and Uniswap's 0.20% LP fee is the
+rest. A pool has no referrer, so nothing is allocated to one.
 
 ---
 
@@ -478,13 +510,19 @@ No quoter is deployed on Arc, and off-chain tick maths would be wrong anyway: th
 migrator seeds two single-sided positions and anyone may add more. So
 `quote_buy`/`quote_sell` `eth_call` the **real swap** against
 `UniswapV4Router04` and read back the `BalanceDelta` it returns — the trader's
-own delta, with the hook's 1% already inside it. State the call does not have (a
-balance to pay with, an allowance to be pulled from) comes from `eth_call` state
-overrides. The fee is then *derived*, never added on:
+own delta, with the hook's 0.80% and the pool's 0.20% LP fee already inside it.
+State the call does not have (a balance to pay with, an allowance to be pulled
+from) comes from `eth_call` state overrides. The hook's fee is then *derived*,
+never added on, on raw units of the quote as the hook computes it
+(`POOL_TRADE_FEE_BPS` = 80):
 
-* **buy** — the pool sees 99% of what the trader pays, so `fee = usdc_in / 100`.
-* **sell** — the trader sees 99% of what the pool pays, so
-  `gross = usdc_out * 10000 / 9900` and `fee = gross / 100`.
+* **buy** — the pool sees 99.2% of what the trader pays, so
+  `fee = quote_in * 80 / 10000`.
+* **sell** — the trader sees 99.2% of what the pool pays, so
+  `gross = quote_out * 10000 / 9920` and `fee = gross * 80 / 10000`.
+
+The LP fee is inside the pool's price and is never reported as a fee: it accrues
+to a position the migrator burned, so nobody collects it.
 
 ### What a settled trade reports, and from where
 
@@ -504,7 +542,7 @@ Why that is the trader's figure, from v4-core `e50237c4` (`PoolManager.swap`):
 `Swap` with the **pool's** delta, and only afterwards does `afterSwap` subtract
 the hook's delta from what the router settles. `amount0` is signed from the
 swapper's side — negative for USDC into the pool — and the hook's fee is always a
-positive `currency0` delta: a buy of 1 USDC with a 0.01 fee logs `−0.99`.
+positive quote-side delta: a buy of 1 USDC with a 0.008 fee logs `−0.992`.
 
 Neither `HookFeeTaken.payer` nor `Swap.sender` is matched on: both are the
 router. And a buy's `usdc` is read, not assumed to be `amountIn` — the router
@@ -514,8 +552,8 @@ sides and for trades too small to be charged.
 
 ### The fee hook pays later, and the fill is still exact
 
-Every arcnow.io pool carries `ArcNowFeeHook` `arcnow/arc-now-fee-hook@2.x.x`. It
-charges 1% and emits `HookFeeTaken` in the swap, but it mints the fee to itself
+Every arcnow.io pool carries `ArcNowFeeHook` `arcnow/arc-now-fee-hook@4.x.x`. It
+charges 0.80% and emits `HookFeeTaken` in the swap, but it mints the fee to itself
 as a `PoolManager` claim and pays out only claims from an **earlier**
 transaction: at the pool's next swap, logged as `FeesDistributed`, or when anyone
 calls `pool.distribute_hook_fees()`. `pool.accrued_hook_fee()` is what is
@@ -523,9 +561,12 @@ waiting. The distribution is the hook's own `burn` and `take`, so it does not
 touch the trader's delta: `PoolTradeResult::fees_distributed` reports it, and
 `usdc` still excludes it.
 
-`pool.hook_version()` reads the hook's `VERSION()`. `accrued_hook_fee` and
-`distribute_hook_fees` refuse any hook that is not `@2.x.x` with
-`Error::UnknownHookVersion { hook, version }` before anything is sent.
+`pool.hook_version()` reads the hook's `VERSION()`; `pool.hook_fee_bps()` its
+`feeBps()` (80) and `pool.fee_config()` the pool's split, `feeConfigOf(poolId)`.
+`accrued_hook_fee`, `distribute_hook_fees` and both of those refuse any hook that
+is not `@4.x.x` with `Error::UnknownHookVersion { hook, version }` before anything
+is sent — the retired `@3.x.x` hook took the curve's 1% and split it five ways,
+and the refusal names it as the retired stack.
 
 `tests/pool_fork.rs` holds a buy, a later sell that distributes the buy's fee, a
 bystander's `distribute_hook_fees` and dust trades each to the trader's native
@@ -550,21 +591,26 @@ approval: the allowance it would need is a state override.
 
 ### The router: arcnow.io's own, and live
 
-arcnow.io stays on its **own** Uniswap v4 `PoolManager`,
+On Arc testnet arcnow.io stays on its **own** Uniswap v4 `PoolManager`,
 `0x06110b57dd9b82DD846ee0325fB81B284E1C6dD0`, and deploys its own router against
 it. Arc testnet also carries an unrelated `PoolManager` with a third-party router
 bound to it; arcnow.io uses neither. Every graduated token has its liquidity in
-`0x06110b57…` permanently (the positions are burned and the migrator is
+its network's manager permanently (the positions are burned and the migrator is
 immutable), so a second manager would only split liquidity across two disjoint
-markets. A router bound to our manager serves every graduated token.
+markets. A router bound to that manager serves every graduated token. On Arc
+mainnet the manager is the one Uniswap v4 `PoolManager` the chain has,
+`0x8366a39CC670B4001A1121B8F6A443A643e40951`, the v4-core release build.
 
-That router is `UniswapV4Router04` from
+The router is `UniswapV4Router04` from
 [z0r0z/v4-router](https://github.com/z0r0z/v4-router) at
-`f5d5bfc2d70c56eb27cd645467e89f074d95660a`, unmodified, deployed by
-`arcnow-io/contracts` `script/DeployV4Router.s.sol` through Arc's CREATE2 factory
-with salt zero. That puts it at `0x139166ee61bb560ff34f05ae4a2b666ad98b9b2e`,
-where it is live on Arc testnet and named by `contracts.v4Router`. The SDK
-behaves as follows:
+`f5d5bfc2d70c56eb27cd645467e89f074d95660a`, unmodified, deployed by arcnow.io
+through Arc's CREATE2 factory with salt zero. That puts it at
+`0x139166ee61bb560ff34f05ae4a2b666ad98b9b2e` on Arc testnet and
+`0x4a142209396e7b9ba4c8527ff037fc73452b287f` on Arc mainnet, where each is live
+and named by `contracts.v4Router`. Every pool the migrator opens carries a
+0.20% LP fee (`POOL_LP_FEE_PIPS`) at tick spacing 60 (`POOL_TICK_SPACING`),
+recorded in the preset's `v4.lp_fee` / `v4.tick_spacing` and read off each
+pool's key. The SDK behaves as follows:
 
 * **No router configured.** Every pool quote and trade — and `router_allowance`
   and `approve_router` — returns `Error::NoRouterDeployed { chain_id }` before
@@ -682,7 +728,7 @@ to the wei, sell with no approval anywhere, graduate at exactly the gas floor, a
 trade the pool through arcnow.io's live router under the fee hook with every
 reported amount equal to the trader's balance change — is run by the maintainers
 before every release, on an anvil fork of Arc testnet with the pinned contracts
-deployed onto it. A fork re-executes with anvil's EVM, so Arc's own execution
+deployed onto it — the same build both networks run. A fork re-executes with anvil's EVM, so Arc's own execution
 semantics (blocklisted transfers, EIP-1153, the EIP-7708 system emitter,
 burn-to-zero) are outside even that.
 

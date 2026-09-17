@@ -1,6 +1,6 @@
 /**
- * Presets, the deliberate mainnet hole, and the refusal to send to a null
- * address.
+ * Presets — Arc testnet and Arc mainnet, both live — and the refusal to send to
+ * a null address.
  */
 
 import { describe, expect, it } from "vitest";
@@ -21,8 +21,11 @@ describe("arc-testnet", () => {
   it("resolves to the live deployment", () => {
     expect(config.chainId).toBe(5042002);
     expect(config.rpcUrl).toBe("https://rpc.testnet.arc.io");
-    expect(config.contracts.launchpad).toBe("0x3e4f0291f5e3ed7f8da839903e2984e6d69b1240");
-    expect(config.contracts.arcnowPlatform).toBe("0xa78b737da5758250cc95097425d3d3ba534ea47a");
+    expect(config.contracts.launchpad).toBe("0x675a7a605911b0e3109eca580bc86e708199d952");
+    expect(config.contracts.arcnowPlatform).toBe("0x912898e51f78e92f0a0d6efdefdee83fe7e8f4a4");
+    expect(config.contracts.quoteRegistry).toBe("0x0428b6a3e1abe299e4497488d1137c3feda54250");
+    expect(config.contracts.feeHook).toBe("0xd70d5f977976cdca4a786b5b118be7458533a0cc");
+    expect(config.v4?.poolManager.toLowerCase()).toBe("0x06110b57dd9b82dd846ee0325fb81b284e1c6dd0");
   });
 
   it("has every required contract", () => {
@@ -69,14 +72,17 @@ describe("arc-testnet", () => {
   });
 
   it("carries the contracts commit the ABIs are pinned to", () => {
-    expect(config.contractsCommit).toBe("327f45b4763ab7f2ba5fc8cc0426b3d02e63f816");
-    expect(config.deployedAtBlock).toBe(62226550);
+    expect(config.contractsCommit).toBe("e461106e2c6a0361b8c5463db292b73ad8691599");
+    expect(config.deployedAtBlock).toBe(62386232);
   });
 
   it("records which build is at each address", () => {
     expect(config.contractVersions.launchpad).toBe("arcnow/launchpad@3.0.0");
-    expect(config.contractVersions.curveFactory).toBe("arcnow/curve-factory@3.0.0");
-    expect(config.contractVersions.feeHook).toBe("arcnow/arc-now-fee-hook@3.0.0");
+    expect(config.contractVersions.tokenFactory).toBe("arcnow/token-factory@2.0.0");
+    expect(config.contractVersions.curveFactory).toBe("arcnow/curve-factory@4.0.0");
+    expect(config.contractVersions.platformRegistry).toBe("arcnow/platform-registry@4.0.0");
+    expect(config.contractVersions.arcnowPlatform).toBe("arcnow/platform-config@4.0.0");
+    expect(config.contractVersions.feeHook).toBe("arcnow/arc-now-fee-hook@4.0.0");
     expect(config.contractVersions.quoteRegistry).toBe("arcnow/quote-registry@1.0.0");
     expect(config.contractVersions.escrowMigrator).toBeUndefined();
   });
@@ -84,7 +90,7 @@ describe("arc-testnet", () => {
   it("is one stack, with the router beside it and no legacy stacks", () => {
     expect(config).not.toHaveProperty("legacyStacks");
     expect(config.contracts.v4Router).toBe("0x139166ee61bb560ff34f05ae4a2b666ad98b9b2e");
-    expect(config.contractVersions.curveFactory).toBe("arcnow/curve-factory@3.0.0");
+    expect(config.contractVersions.curveFactory).toBe("arcnow/curve-factory@4.0.0");
     expect(rawNetwork("arc-testnet")).not.toHaveProperty("legacyStacks");
   });
 
@@ -99,37 +105,63 @@ describe("arc-testnet", () => {
   });
 });
 
-describe("arc-mainnet resolves, and then refuses", () => {
-  it("is a preset — not a 'no such network'", () => {
+describe("arc-mainnet", () => {
+  const config = resolveNetwork("arc-mainnet");
+
+  it("is a preset that resolves to the live mainnet deployment", () => {
     expect(NETWORKS).toContain("arc-mainnet");
-    // The raw entry is readable, so a caller can SEE that it is empty rather
-    // than infer it from a thrown error.
-    const raw = rawNetwork("arc-mainnet");
-    expect(raw.name).toBe("arc-mainnet");
-    expect(raw.chainId).toBeNull();
-    expect(raw.contracts.launchpad).toBeNull();
+    expect(config.name).toBe("arc-mainnet");
+    expect(config.chainId).toBe(5042);
+    expect(config.rpcUrl).toBe("https://rpc.mainnet.arc.io");
+    expect(config.explorerUrl).toBe("https://explorer.arc.io");
+    expect(config.deployedAtBlock).toBe(21179866);
+    expect(config.contractsCommit).toBe("e461106e2c6a0361b8c5463db292b73ad8691599");
   });
 
-  it("fails with NetworkNotDeployed and names every missing contract", () => {
-    try {
-      resolveNetwork("arc-mainnet");
-      expect.unreachable("arc-mainnet must not resolve to something usable");
-    } catch (error) {
-      if (!isArcNowError(error)) throw error;
-      expect(error.code).toBe("NetworkNotDeployed");
-      expect(error.code).not.toBe("UnknownNetwork");
-      for (const name of REQUIRED_CONTRACTS) {
-        expect(error.message).toContain(name);
-      }
-      expect(error.message).toMatch(/not the SDK being out of date/);
-      expect(error.message).toMatch(/rpcUrl, chainId, contracts/);
-      expect(error.details.missing).toHaveLength(REQUIRED_CONTRACTS.length);
+  it("carries every address of the deployment record, lower-cased", () => {
+    expect(config.contracts.launchpad).toBe("0xae1e5558ab71e851ce44f5c0f12ebeaf3db9dae3");
+    expect(config.contracts.tokenFactory).toBe("0x5e920c86ed0415ced9c4b3ddaad3203d48187341");
+    expect(config.contracts.curveFactory).toBe("0xd75d46bd1974267d7b1a028be72553fd4f409072");
+    expect(config.contracts.migratorRegistry).toBe("0xd1f3dbd38a82376b60555f57934136760c5b25e9");
+    expect(config.contracts.platformRegistry).toBe("0x0397b1da5ff68525403c9830178606f236c44cc6");
+    expect(config.contracts.quoteRegistry).toBe("0x969a6a598efb4743293e8ad3df56a065fd990f6b");
+    expect(config.contracts.arcnowPlatform).toBe("0xe3c7cd3e98af47de518740c7cfef9fc7064b2ef9");
+    expect(config.contracts.v4Migrator).toBe("0x64dde435db5d5e57965b27488ac8dee734ef0311");
+    expect(config.contracts.feeHook).toBe("0x3cf7b568c0731c6efdec591d80aa55af51e220cc");
+    expect(config.contracts.v4Router).toBe("0x4a142209396e7b9ba4c8527ff037fc73452b287f");
+    expect(config.v4?.poolManager.toLowerCase()).toBe("0x8366a39cc670b4001a1121b8f6a443a643e40951");
+    for (const name of REQUIRED_CONTRACTS) {
+      expect(requireContract(config, name)).toMatch(/^0x[0-9a-f]{40}$/);
     }
   });
 
-  it("never hands back a zero address", () => {
-    // The zero address is a real account on Arc that would send money nowhere.
-    expect(() => resolveNetwork("arc-mainnet")).toThrow();
+  it("is v4-only, like testnet, with nothing custodial on chain", () => {
+    expect(config.venues)
+      .toEqual({ escrow: false, uniswapV2: false, uniswapV3: false, uniswapV4: true });
+    expect(config.contracts.escrowMigrator).toBeUndefined();
+    expect(config.contracts.v2Migrator).toBeUndefined();
+    expect(config.contracts.v3Migrator).toBeUndefined();
+  });
+
+  it("runs the same build as testnet", () => {
+    const testnet = resolveNetwork("arc-testnet");
+    expect(config.contractVersions).toEqual(testnet.contractVersions);
+    expect(config.contractVersions.feeHook).toBe("arcnow/arc-now-fee-hook@4.0.0");
+  });
+
+  it("quotes in native USDC and Circle's mainnet EURC", () => {
+    expect(config.quoteTokens.map((q) => q.symbol)).toEqual(["USDC", "EURC"]);
+    const eurc = config.quoteTokens.find((q) => q.symbol === "EURC");
+    expect(eurc?.address).toBe("0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1");
+    expect(eurc?.decimals).toBe(6);
+    expect(config.quoteAllowanceSlots["0xbef5f6d51cb62b58e6a8f77868681825c6fe21c1"]).toBe(10n);
+  });
+
+  it("describes Arc's native currency as USDC at 18 decimals, with the explorer", () => {
+    const chain = toViemChain(config);
+    expect(chain.id).toBe(5042);
+    expect(chain.nativeCurrency).toEqual({ name: "USD Coin", symbol: "USDC", decimals: 18 });
+    expect(chain.blockExplorers?.default.url).toBe("https://explorer.arc.io");
   });
 });
 

@@ -44,9 +44,9 @@ describe("arc-testnet's quote tokens", () => {
   });
 
   it("records the deployed quote registry", () => {
-    expect(config.contracts.quoteRegistry).toBe("0x72405d10551d3e27a899dc3119cb356cb27bb9b3");
+    expect(config.contracts.quoteRegistry).toBe("0x0428b6a3e1abe299e4497488d1137c3feda54250");
     expect(rawNetwork("arc-testnet").contracts.quoteRegistry)
-      .toBe("0x72405d10551d3e27a899dc3119cb356cb27bb9b3");
+      .toBe("0x0428b6a3e1abe299e4497488d1137c3feda54250");
   });
 });
 

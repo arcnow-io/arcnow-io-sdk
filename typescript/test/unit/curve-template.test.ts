@@ -89,13 +89,26 @@ describe("arcnow.io's template on Arc testnet", () => {
   });
 
   it("names the platform it was read off", () => {
-    expect(raw["arc-testnet"]?.platform).toBe("0xa78b737da5758250cc95097425d3d3ba534ea47a");
-    expect(raw["arc-testnet"]?.platformVersion).toBe("arcnow/platform-config@3.0.0");
+    expect(raw["arc-testnet"]?.platform).toBe("0x912898e51f78e92f0a0d6efdefdee83fe7e8f4a4");
+    expect(raw["arc-testnet"]?.platformVersion).toBe("arcnow/platform-config@4.0.0");
   });
 });
 
-describe("the reference template (1e9 / 50,000 USDC)", () => {
+describe("the reference template (1e9 / 50,000 USDC), which arcnow.io's mainnet platform serves", () => {
   const reference = CurveTemplate.reference();
+
+  it("is the arc-mainnet snapshot, read off arcnow.io's mainnet platform", () => {
+    expect(CurveTemplate.referenceFor("arc-mainnet")).toEqual(reference);
+    expect(raw["arc-mainnet"]?.platform).toBe("0xe3c7cd3e98af47de518740c7cfef9fc7064b2ef9");
+    expect(raw["arc-mainnet"]?.platformVersion).toBe("arcnow/platform-config@4.0.0");
+    expect(raw["arc-mainnet"]?.vectorsTemplate).toBe("reference");
+    expect(raw).not.toHaveProperty("cpmm-reference");
+  });
+
+  it("differs from the testnet template by exactly a thousand times in supply and target", () => {
+    expect(reference.totalSupply.wad).toBe(template.totalSupply.wad * 1000n);
+    expect(reference.target.wad).toBe(template.target.wad * 1000n);
+  });
 
   it("equals the contracts' 'reference' template and prices like the testnet one", () => {
     const t = vectorTemplate("reference");
@@ -129,8 +142,9 @@ describe("encoding and decoding", () => {
     expect(CurveTemplate.arcnowDefaults()).not.toBe(CurveTemplate.arcnowDefaults());
   });
 
-  it("has no reference for a chain nothing is deployed on", () => {
-    expect(CurveTemplate.referenceFor("arc-mainnet")).toBeUndefined();
+  it("has a snapshot for each live network, and none for a name nothing describes", () => {
+    expect(CurveTemplate.referenceFor("arc-mainnet")).toEqual(CurveTemplate.reference());
+    expect(CurveTemplate.referenceFor("arc-testnet")).toEqual(CurveTemplate.arcnowDefaults());
     expect(CurveTemplate.referenceFor("no-such-network")).toBeUndefined();
   });
 });
@@ -161,7 +175,7 @@ describe("the cheap local checks", () => {
 
 describe("provenance: one source for two languages", () => {
   it("stores every wad as a string, because none of them fits a double", () => {
-    for (const id of ["arc-testnet", "cpmm-reference"]) {
+    for (const id of ["arc-testnet", "arc-mainnet"]) {
       const entry = raw[id];
       for (const key of [
         "totalSupplyWad", "curveSupplyWad", "y0Wad", "r0Wad", "targetQuoteWad", "initialPriceWad",

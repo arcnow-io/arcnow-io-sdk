@@ -82,7 +82,7 @@ describe("the quote registry", () => {
     const { chain, client } = setup({
       ...PRESET, contracts: { ...PRESET.contracts, quoteRegistry: REGISTRY_ADDRESS },
     });
-    expect(PRESET.contracts.quoteRegistry).toBe("0x72405d10551d3e27a899dc3119cb356cb27bb9b3");
+    expect(PRESET.contracts.quoteRegistry).toBe("0x0428b6a3e1abe299e4497488d1137c3feda54250");
     expect(await client.quoteRegistry.address()).toBe(REGISTRY);
     expect(chain.calls).not.toContain("launchpad.quoteTokenRegistry");
   });

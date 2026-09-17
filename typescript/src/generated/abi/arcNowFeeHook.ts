@@ -964,11 +964,6 @@ export const arcNowFeeHookAbi = [
             "internalType": "uint256"
           },
           {
-            "name": "devShareBps",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
             "name": "protocolShareBps",
             "type": "uint256",
             "internalType": "uint256"
@@ -1147,11 +1142,6 @@ export const arcNowFeeHookAbi = [
             "internalType": "address"
           },
           {
-            "name": "dev",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
             "name": "protocol",
             "type": "address",
             "internalType": "address"
@@ -1168,11 +1158,6 @@ export const arcNowFeeHookAbi = [
           },
           {
             "name": "refWad",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "devWad",
             "type": "uint256",
             "internalType": "uint256"
           },

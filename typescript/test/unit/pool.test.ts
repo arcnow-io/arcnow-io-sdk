@@ -41,6 +41,7 @@ import { NATIVE_USDC, Tokens, Usdc } from "../../src/amounts.js";
 import { createArcNowClient } from "../../src/client.js";
 import { Deadline } from "../../src/deadline.js";
 import { isArcNowError } from "../../src/errors/index.js";
+import { POOL_LP_FEE_PIPS, POOL_TRADE_FEE_BPS, TRADE_FEE_BPS } from "../../src/fees.js";
 import { arcNowFeeHookAbi, arcTokenAbi, bondingCurveAbi, uniswapV4MigratorAbi }
   from "../../src/generated/abi/index.js";
 import { uniswapV4Router04Abi }
@@ -190,26 +191,32 @@ describe("the ArcToken allowance storage slot", () => {
  * The fee identities
  * -------------------------------------------------------------------------- */
 
-describe("the 1%, derived from a quote", () => {
+describe("the hook's 0.80%, derived from a quote", () => {
+  it("is 80 bps of the trade, not the curve's 100: the pool's 0.20% LP fee makes up the rest", () => {
+    expect(POOL_TRADE_FEE_BPS).toBe(80n);
+    expect(POOL_TRADE_FEE_BPS).not.toBe(TRADE_FEE_BPS);
+    expect(POOL_TRADE_FEE_BPS + BigInt(POOL_LP_FEE_PIPS) / 100n).toBe(TRADE_FEE_BPS);
+  });
+
   it("takes it off the input on a buy", () => {
-    // The hook charges before the pool sees the money, so the pool swaps 99% of
-    // what the trader pays and the fee is a plain 1% of the input.
-    expect(buyFeeFromQuoteIn(Usdc.parse("100")).toString()).toBe("1");
-    expect(buyFeeFromQuoteIn(Usdc.parse("25")).toString()).toBe("0.25");
+    // The hook charges before the pool sees the money, so the pool swaps 99.2%
+    // of what the trader pays and the fee is a plain 0.80% of the input.
+    expect(buyFeeFromQuoteIn(Usdc.parse("100")).toString()).toBe("0.8");
+    expect(buyFeeFromQuoteIn(Usdc.parse("25")).toString()).toBe("0.2");
     expect(buyFeeFromQuoteIn(Usdc.ZERO).isZero()).toBe(true);
   });
 
-  it("grosses back up on a sell, because the trader already sees 99%", () => {
+  it("grosses back up on a sell, because the trader already sees 99.2%", () => {
     // The pool quotes the USDC and the hook takes its cut out of the payout, so
-    // usdcOut is 99% of the gross and the fee is 1% of that gross.
-    expect(sellFeeFromQuoteOut(Usdc.parse("99")).toString()).toBe("1");
+    // usdcOut is 99.2% of the gross and the fee is 0.80% of that gross.
+    expect(sellFeeFromQuoteOut(Usdc.parse("99.2")).toString()).toBe("0.8");
     expect(sellFeeFromQuoteOut(Usdc.ZERO).isZero()).toBe(true);
   });
 
   it("closes: gross = out + fee, for every gross in a wide range", () => {
     for (const whole of [1n, 7n, 50n, 12_345n, 1_000_000n]) {
       const gross = Usdc.fromWhole(whole);
-      const out = Usdc.fromWad((gross.wad * 9_900n) / 10_000n);
+      const out = Usdc.fromWad((gross.wad * 9_920n) / 10_000n);
       const fee = sellFeeFromQuoteOut(out);
       // Integer division at two steps, so allow the wei it can lose; what must
       // not happen is a systematic error.
@@ -220,30 +227,30 @@ describe("the 1%, derived from a quote", () => {
     }
   });
 
-  it("runs backwards from the fee the hook logged, to within 99 wei", () => {
+  it("runs backwards from the fee the hook logged, to within 124 wei", () => {
     // The hook emits the feeWad it actually took, so a sell's payout can be
     // recovered from the receipt instead of from a simulation. The fee was
     // FLOORED, so this recovers the bottom of the window of grosses that would
-    // have produced it -- every gross in [feeWad*100, feeWad*100 + 99].
+    // have produced it -- every gross in [feeWad*125, feeWad*125 + 124].
     for (const gross of [
       Usdc.parse("1").wad,
       Usdc.parse("37.5").wad,
       Usdc.parse("0.0001").wad,
       123_456_789_012_345_678n,
     ]) {
-      const feeWad = (gross * 100n) / 10_000n;
+      const feeWad = (gross * 80n) / 10_000n;
       const settled = gross - feeWad;
       const recovered = sellQuoteOutFromFee(Usdc.fromWad(feeWad)).wad;
       expect(recovered, `gross ${gross}`).toBeLessThanOrEqual(settled);
-      expect(settled - recovered, `gross ${gross}`).toBeLessThanOrEqual(99n);
+      expect(settled - recovered, `gross ${gross}`).toBeLessThanOrEqual(124n);
     }
   });
 
   it("recovers exactly when the gross happens to land on the boundary", () => {
-    // 100 USDC exactly: the fee is 1 USDC with nothing floored away, so there
+    // 100 USDC exactly: the fee is 0.8 USDC with nothing floored away, so there
     // is no window and the recovery is an equality.
-    const fee = Usdc.parse("1").wad;
-    expect(sellQuoteOutFromFee(Usdc.fromWad(fee)).wad).toBe(Usdc.parse("99").wad);
+    const fee = Usdc.parse("0.8").wad;
+    expect(sellQuoteOutFromFee(Usdc.fromWad(fee)).wad).toBe(Usdc.parse("99.2").wad);
   });
 
   it("recovers zero from zero, which is the dust case the hook does not log", () => {
@@ -253,12 +260,12 @@ describe("the 1%, derived from a quote", () => {
   });
 
   it("is NOT the buy identity applied to the sell's output", () => {
-    // The mistake this pair exists to prevent. Using usdcOut * 1% under-reports
-    // the fee by 1% of itself -- 0.0099 on a 99 USDC payout. Both numbers look
-    // like a fee; only one is the one the hook took.
-    const out = Usdc.parse("99");
+    // The mistake this pair exists to prevent. Using usdcOut * 0.80% under-reports
+    // the fee by 0.80% of itself -- 0.0064 on a 99.2 USDC payout. Both numbers
+    // look like a fee; only one is the one the hook took.
+    const out = Usdc.parse("99.2");
     expect(sellFeeFromQuoteOut(out).wad).toBeGreaterThan(buyFeeFromQuoteIn(out).wad);
-    expect(sellFeeFromQuoteOut(out).sub(buyFeeFromQuoteIn(out)).toString()).toBe("0.01");
+    expect(sellFeeFromQuoteOut(out).sub(buyFeeFromQuoteIn(out)).toString()).toBe("0.0064");
   });
 });
 
@@ -285,12 +292,14 @@ interface Script {
    * which is the planned deployment.
    */
   routerPoolManager?: Address;
-  /** What the pool key's fee hook answers to `VERSION()`. Defaults to `@3.0.0`. */
+  /** What the pool key's fee hook answers to `VERSION()`. Defaults to `@4.0.0`. */
   hookVersion?: string;
 }
 
 /** The fee hook the scripted pool key names. */
 const HOOK_ADDRESS: Address = "0x00000000000000000000000000000000000020cc";
+const SIGNER_PLATFORM: Address = "0x00000000000000000000000000000000000000f1";
+const SIGNER_PROTOCOL: Address = "0x00000000000000000000000000000000000000f2";
 
 /**
  * A transport that answers exactly the reads these tests script, and throws on
@@ -337,7 +346,7 @@ function scripted(script: Script, calls: string[] = []) {
           return answer(toRouter ? (script.routerPoolManager ?? OURS) : script.poolManager);
         case "poolIdOf": return answer(pad("0x01"));
         case "poolKey":
-          return answer([pad("0x00", { size: 20 }), TOKEN, 3000, 60, HOOK_ADDRESS]);
+          return answer([pad("0x00", { size: 20 }), TOKEN, 2000, 60, HOOK_ADDRESS]);
         case "swapExactTokensForTokens":
           // A buy's delta: 1 USDC paid, 4,321 tokens received.
           return answer(
@@ -350,11 +359,18 @@ function scripted(script: Script, calls: string[] = []) {
         // The hook's: the claim-only pool methods ask it before any read.
         case "VERSION":
           return answer(call.to.toLowerCase() === HOOK_ADDRESS.toLowerCase()
-            ? (script.hookVersion ?? "arcnow/arc-now-fee-hook@3.0.0")
+            ? (script.hookVersion ?? "arcnow/arc-now-fee-hook@4.0.0")
             : call.to.toLowerCase() === MIGRATOR.toLowerCase()
               ? "arcnow/uniswap-v4-migrator@2.0.0"
-              : "arcnow/bonding-curve@3.0.0");
+              : "arcnow/bonding-curve@4.0.0");
         case "accruedFee": return answer(12_345n);
+        case "feeBps": return answer(80n);
+        case "feeConfigOf":
+          return answer({
+            creatorShareBps: 5_000n, platformShareBps: 1_875n, refShareBps: 0n,
+            protocolShareBps: 3_125n,
+            platformRecipient: SIGNER_PLATFORM, protocolRecipient: SIGNER_PROTOCOL,
+          });
         // The curve's quote: native USDC, read by the front door's curve quote.
         case "quoteToken": return answer("0x0000000000000000000000000000000000000000");
         case "quoteDecimals": return answer(18);
@@ -539,7 +555,7 @@ describe("a router that serves the token's PoolManager", () => {
     expect(quote.venue).toBe("pool");
     expect(quote.quoteIn.toString()).toBe("1");
     expect(quote.tokensOut.toString()).toBe("4321");
-    expect(quote.feeQuote.toString()).toBe("0.01");
+    expect(quote.feeQuote.toString()).toBe("0.008");
     expect(calls).toContain("router.swapExactTokensForTokens");
   });
 
@@ -744,13 +760,12 @@ describe("Trade dispatches on the venue the token is actually on", () => {
         minTokensOut: Tokens.ZERO,
         deadline: Deadline.inMinutes(5),
         referrer: "0x2222222222222222222222222222222222222222",
-        developer: "0x3333333333333333333333333333333333333333",
         gasLimit: 8_000_000n,
       });
       expect.unreachable();
     } catch (error) {
       if (!isArcNowError(error)) throw error;
-      expect(error.details.refused).toEqual(["referrer", "developer", "gasLimit"]);
+      expect(error.details.refused).toEqual(["referrer", "gasLimit"]);
     }
   });
 
@@ -774,11 +789,56 @@ describe("the fee hook's version", () => {
   const graduated: Script = { migratedPool: OURS, poolManager: OURS };
   const SIGNER: Address = "0x00000000000000000000000000000000000000c0";
 
-  it("reads the accrued fee of an arcnow/arc-now-fee-hook@3.x.x hook", async () => {
+  it("reads the accrued fee of an arcnow/arc-now-fee-hook@4.x.x hook", async () => {
     const calls: string[] = [];
     const fee = await clientFor(graduated, calls).pool(TOKEN).accruedHookFee();
     expect(fee.wad).toBe(12_345n);
     expect(calls).toContain("accruedFee");
+  });
+
+  it("reads the hook's own rate off the hook: 80 bps, the pool's fee and not the curve's", async () => {
+    const calls: string[] = [];
+    const pool = clientFor(graduated, calls).pool(TOKEN);
+    const rate = await pool.hookFeeBps();
+    expect(rate.bps).toBe(80n);
+    expect(rate.bps).toBe(POOL_TRADE_FEE_BPS);
+    expect(calls).toContain("feeBps");
+  });
+
+  it("reads the pool's own split off the hook: creator 5000 / platform 1875 / protocol 3125, no referrer", async () => {
+    const calls: string[] = [];
+    const pool = clientFor(graduated, calls).pool(TOKEN);
+    const config = await pool.feeConfig();
+    expect(config.creatorShareBps.bps).toBe(5_000n);
+    expect(config.platformShareBps.bps).toBe(1_875n);
+    expect(config.refShareBps.bps).toBe(0n);
+    expect(config.protocolShareBps.bps).toBe(3_125n);
+    expect(config.platformRecipient.toLowerCase()).toBe(SIGNER_PLATFORM);
+    expect(config.protocolRecipient.toLowerCase()).toBe(SIGNER_PROTOCOL);
+    expect(config).not.toHaveProperty("devShareBps");
+    expect(calls).toContain("feeConfigOf");
+  });
+
+  it("describes what a migrated trade costs: the hook's 0.80% plus the key's 0.20% LP fee", async () => {
+    const pool = clientFor(graduated, []).pool(TOKEN);
+    const fees = await pool.fees();
+    expect(fees.hookFeeBps.bps).toBe(80n);
+    expect(fees.lpFeePips).toBe(POOL_LP_FEE_PIPS);
+    expect(fees.totalBps.bps).toBe(TRADE_FEE_BPS);
+    expect((await pool.key()).fee).toBe(2000);
+  });
+
+  it("refuses a hook of the retired 3.x stack by name", async () => {
+    const client = clientFor({ ...graduated, hookVersion: "arcnow/arc-now-fee-hook@3.0.0" }, [], SIGNER);
+    try {
+      await client.pool(TOKEN).accruedHookFee();
+      expect.unreachable();
+    } catch (error) {
+      if (!isArcNowError(error)) throw error;
+      expect(error.code).toBe("UnknownHookVersion");
+      expect(error.message).toMatch(/retired multi-quote/);
+      expect(error.message).toContain("arcnow/arc-now-fee-hook@4.x.x");
+    }
   });
 
   it.each([
@@ -895,27 +955,27 @@ describe("reading a native-quoted pool fill out of its receipt", () => {
   });
 
   it("reads a buy exactly: Swap.amount0 is the pool's leg, the hook's fee is on top", () => {
-    // The trader sent 1 USDC; the hook took 0.01 in beforeSwap, so the pool
-    // swapped 0.99, and the Swap log -- emitted before afterSwap folds the
-    // hook's delta back in -- says -0.99.
+    // The trader sent 1 USDC; the hook took 0.008 in beforeSwap, so the pool
+    // swapped 0.992, and the Swap log -- emitted before afterSwap folds the
+    // hook's delta back in -- says -0.992.
     const logs = [
-      feeTaken(10_000_000_000_000_000n, true),
-      swap(-990_000_000_000_000_000n, 5_013_839_205_774_463_870_681n),
+      feeTaken(8_000_000_000_000_000n, true),
+      swap(-992_000_000_000_000_000n, 5_013_839_205_774_463_870_681n),
     ];
     const fill = quoteFillFromLogs(logs, where("buy"));
     expect(fill.quote.wad).toBe(1_000_000_000_000_000_000n);
-    expect(fill.feeQuote.wad).toBe(10_000_000_000_000_000n);
+    expect(fill.feeQuote.wad).toBe(8_000_000_000_000_000n);
   });
 
   it("reads a sell exactly where the fee alone can only bound it", () => {
-    // A gross of 10,199 wei: the hook takes floor(10,199 / 100) = 101 and the
-    // trader receives 10,098. From the fee alone, 101 * 99 = 9,999 -- 99 wei
-    // short, which is the defect this function replaces.
-    const logs = [swap(10_199n, -7n * 10n ** 18n), feeTaken(101n, false)];
+    // A gross of 12,624 wei: the hook takes floor(12,624 * 80 / 10,000) = 100
+    // and the trader receives 12,524. From the fee alone, 100 * 124 = 12,400 --
+    // 124 wei short, which is the defect this function replaces.
+    const logs = [swap(12_624n, -7n * 10n ** 18n), feeTaken(100n, false)];
     const fill = quoteFillFromLogs(logs, where("sell"));
-    expect(fill.quote.wad).toBe(10_098n);
-    expect(fill.feeQuote.wad).toBe(101n);
-    expect(sellQuoteOutFromFee(Usdc.fromWad(101n)).wad).toBe(9_999n);
+    expect(fill.quote.wad).toBe(12_524n);
+    expect(fill.feeQuote.wad).toBe(100n);
+    expect(sellQuoteOutFromFee(Usdc.fromWad(100n)).wad).toBe(12_400n);
   });
 
   it("reads a buy too small to be charged: no HookFeeTaken at all, and still exact", () => {

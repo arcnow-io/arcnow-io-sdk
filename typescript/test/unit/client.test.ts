@@ -34,8 +34,8 @@ describe("a read-only client", () => {
   });
 
   it("exposes every handle without a signer", () => {
-    expect(client.launchpad.address).toBe("0x3e4f0291f5e3ed7f8da839903e2984e6d69b1240");
-    expect(client.platforms.address).toBe("0xd265496c0f4e7948db1813196993430eb54eb42c");
+    expect(client.launchpad.address).toBe("0x675a7a605911b0e3109eca580bc86e708199d952");
+    expect(client.platforms.address).toBe("0x0b29d79e45715911eabb9f82eebaf42668993b26");
     expect(client.curve(anyAddress).address).toBe(anyAddress);
     expect(client.token(anyAddress).address).toBe(anyAddress);
   });
@@ -158,9 +158,13 @@ describe("argument checks that happen before the chain is asked", () => {
 });
 
 describe("building a client", () => {
-  it("refuses arc-mainnet at construction, not at first use", () => {
-    expect(() => createArcNowClient({ network: "arc-mainnet", transport: forbidden }))
-      .toThrow(/nothing deployed on it/);
+  it("builds against arc-mainnet with no transport traffic, on the mainnet stack", () => {
+    const mainnet = createArcNowClient({ network: "arc-mainnet", transport: forbidden });
+    expect(mainnet.config.chainId).toBe(5042);
+    expect(mainnet.config.name).toBe("arc-mainnet");
+    expect(mainnet.launchpad.address).toBe("0xae1e5558ab71e851ce44f5c0f12ebeaf3db9dae3");
+    expect(mainnet.platforms.address).toBe("0x0397b1da5ff68525403c9830178606f236c44cc6");
+    expect(mainnet.config.contracts.v4Router).toBe("0x4a142209396e7b9ba4c8527ff037fc73452b287f");
   });
 
   it("has a builder that says what is missing", () => {

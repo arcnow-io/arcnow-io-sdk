@@ -55,8 +55,8 @@
  * So a quote is an `eth_call` of the **real swap**, with state overrides
  * standing in for the money and the allowance, reading back the
  * `BalanceDelta` the router returns. That delta is the trader's own, with the
- * hook's 1% already inside it — which is the entire reason it is worth the round
- * trip. See {@link unpackBalanceDelta}.
+ * hook's 0.80% and the pool's 0.20% LP fee already inside it — which is the
+ * entire reason it is worth the round trip. See {@link unpackBalanceDelta}.
  *
  * # The pool's quote token, and which side of the key it is on
  *
@@ -71,13 +71,17 @@
  * `BalanceDelta`, a `Swap` log and the hook's fee — and every SDK amount is WAD,
  * so the quote leg is scaled by `10^(18 - decimals)` on the way in and out.
  *
- * # The 1% is charged in the quote, by the hook, inside the swap
+ * # The pool's own 0.80% is charged in the quote, by the hook, inside the swap
  *
- * `ArcNowFeeHook` takes the same 1% the curve took, on the quote leg, in raw
- * units, and splits it five ways exactly as the curve does. **A pool swap names no referrer and no
- * developer**: a pool has no argument for them, and a hook that read them out of
- * `hookData` would let any trader name themselves the referrer and skim the
- * share. Both are paid to the platform recipient.
+ * `ArcNowFeeHook` takes {@link POOL_TRADE_FEE_BPS} — 0.80% of the gross quote
+ * leg, in raw units — and splits it on the pool's own split, creator 5000 /
+ * platform 1875 / protocol 3125 bps, which the hook answers from
+ * `feeConfigOf(poolId)` ({@link Pool.feeConfig}). The pool charges its 0.20% LP
+ * fee on top, inside its own price, so a migrated trade costs the curve's 1.00%
+ * in all ({@link Pool.fees}). **A pool swap names no referrer**: a pool has no
+ * argument for one, and a hook that read one out of `hookData` would let any
+ * trader name themselves the referrer and skim the share, so the pool's split
+ * has no referrer share at all.
  *
  * # A filled trade is read out of its own receipt, to the wei
  *
@@ -100,17 +104,18 @@ import {
 } from "viem";
 
 import type { QuoteAmount, QuoteTokenInfo } from "./amounts.js";
-import { QuoteAmount as Quote, Tokens, WAD } from "./amounts.js";
+import { Bps, QuoteAmount as Quote, Tokens, WAD } from "./amounts.js";
 import type { ClientContext } from "./client.js";
 import type { Deadline } from "./deadline.js";
 import { ArcNowError } from "./errors/error.js";
 import { withMappedErrors } from "./errors/map.js";
-import { BPS_DENOMINATOR, TRADE_FEE_BPS } from "./fees.js";
+import type { FeeConfig } from "./fees.js";
+import { BPS_DENOMINATOR, POOL_TRADE_FEE_BPS } from "./fees.js";
 import { arcNowFeeHookAbi, arcTokenAbi, uniswapV4MigratorAbi }
   from "./generated/abi/index.js";
 import { uniswapV4Router04Abi } from "./generated/abi/external/uniswapV4Router04.js";
 import { configuredV4Router, quoteAllowanceSlot, requireV4Router } from "./networks.js";
-import { assertV4MigratorVersion } from "./curve-version.js";
+import { assertHookVersion, assertV4MigratorVersion } from "./curve-version.js";
 import {
   allowanceOverride,
   erc20AllowanceSlot,
@@ -145,11 +150,15 @@ export interface PoolKeyStruct {
   readonly currency0: Address;
   /** The higher of the two. */
   readonly currency1: Address;
-  /** The LP fee tier, in hundredths of a bip. Uniswap's fee, not arcnow.io's. */
+  /**
+   * The LP fee tier, in hundredths of a bip: `2000`, 0.20%. Uniswap's fee, not
+   * arcnow.io's, and not revenue — the migrator burns its position, so it
+   * accrues to liquidity nobody can collect.
+   */
   readonly fee: number;
-  /** The pool's tick spacing. */
+  /** The pool's tick spacing: `60`. */
   readonly tickSpacing: number;
-  /** `ArcNowFeeHook`: where arcnow.io's own 1% is charged. */
+  /** `ArcNowFeeHook`: where arcnow.io's own 0.80% is charged. */
   readonly hooks: Address;
 }
 
@@ -177,7 +186,7 @@ export interface BalanceDelta {
  * missing truncation reads it as ~3.4e38 tokens.
  *
  * **The signs are the trader's own.** Negative is what leaves them; positive is
- * what arrives. On a buy that is `amount0 < 0` (USDC paid, the hook's 1%
+ * what arrives. On a buy that is `amount0 < 0` (USDC paid, the hook's 0.80%
  * already inside it) and `amount1 > 0` (tokens received). On a sell it is the
  * other way round.
  */
@@ -231,17 +240,17 @@ export function arcTokenAllowanceSlot(owner: Address, spender: Address): Hex {
  * -------------------------------------------------------------------------- */
 
 /**
- * arcnow.io's 1%, on a **buy**, in the pool's quote.
+ * The hook's 0.80%, on a **buy**, in the pool's quote.
  *
  * The hook takes its cut off the input before the pool sees any of it, so the
- * pool swaps 99% of what the trader pays and the identity is the plain one —
+ * pool swaps 99.2% of what the trader pays and the identity is the plain one —
  * **computed on raw units, the way the hook computes it**:
  *
  * ```text
- * feeRaw = quoteInRaw * TRADE_FEE_BPS / 10000
+ * feeRaw = quoteInRaw * POOL_TRADE_FEE_BPS / 10000
  * ```
  *
- * So for a 6-decimal quote a buy of fewer than 100 raw units (0.0001 EURC) is
+ * So for a 6-decimal quote a buy of fewer than 125 raw units (0.000125 EURC) is
  * charged nothing: dust-level fee-free swaps, accepted and documented.
  *
  * Derived rather than read back, because the fee is not a field of anything the
@@ -249,30 +258,30 @@ export function arcTokenAllowanceSlot(owner: Address, spender: Address): Hex {
  */
 export function buyFeeFromQuoteIn(quoteIn: QuoteAmount): QuoteAmount {
   const raw = quoteIn.floorToRepresentable().toRaw();
-  return Quote.fromRaw(quoteIn.token, (raw * TRADE_FEE_BPS) / BPS_DENOMINATOR);
+  return Quote.fromRaw(quoteIn.token, (raw * POOL_TRADE_FEE_BPS) / BPS_DENOMINATOR);
 }
 
 /**
- * arcnow.io's 1%, on a **sell**, in the pool's quote, on raw units.
+ * The hook's 0.80%, on a **sell**, in the pool's quote, on raw units.
  *
  * Here the pool quotes the payout first and the hook takes its cut out of it,
- * so the trader sees 99% of what the pool paid and the identity runs backwards
- * through that:
+ * so the trader sees 99.2% of what the pool paid and the identity runs
+ * backwards through that:
  *
  * ```text
- * grossRaw = quoteOutRaw * 10000 / (10000 - TRADE_FEE_BPS)
- * feeRaw   = grossRaw * TRADE_FEE_BPS / 10000
+ * grossRaw = quoteOutRaw * 10000 / (10000 - POOL_TRADE_FEE_BPS)
+ * feeRaw   = grossRaw * POOL_TRADE_FEE_BPS / 10000
  * ```
  *
  * Applying the buy's identity to the payout instead would under-report the fee
- * by 1% of itself. **Two floors, so this can sit one raw unit under the fee the
+ * by 0.80% of itself. **Two floors, so this can sit one raw unit under the fee the
  * hook actually took**; compare against {@link PoolTradeResult.feeQuote}, which
  * is read from the hook's own log, with a one-unit tolerance.
  */
 export function sellFeeFromQuoteOut(quoteOut: QuoteAmount): QuoteAmount {
   const raw = quoteOut.floorToRepresentable().toRaw();
-  const gross = (raw * BPS_DENOMINATOR) / (BPS_DENOMINATOR - TRADE_FEE_BPS);
-  return Quote.fromRaw(quoteOut.token, (gross * TRADE_FEE_BPS) / BPS_DENOMINATOR);
+  const gross = (raw * BPS_DENOMINATOR) / (BPS_DENOMINATOR - POOL_TRADE_FEE_BPS);
+  return Quote.fromRaw(quoteOut.token, (gross * POOL_TRADE_FEE_BPS) / BPS_DENOMINATOR);
 }
 
 /**
@@ -282,16 +291,16 @@ export function sellFeeFromQuoteOut(quoteOut: QuoteAmount): QuoteAmount {
  * caller who holds nothing but a `HookFeeTaken` log:
  *
  * ```text
- * grossRaw = feeRaw * 10000 / 100
+ * grossRaw = feeRaw * 10000 / 80
  * netRaw   = grossRaw - feeRaw
  * ```
  *
- * **Up to 99 raw units under the truth, and no better**, because the fee was
+ * **Up to 124 raw units under the truth, and no better**, because the fee was
  * floored. A sell too small to be charged emits no `HookFeeTaken` at all.
  */
 export function sellQuoteOutFromFee(fee: QuoteAmount): QuoteAmount {
   const raw = fee.floorToRepresentable().toRaw();
-  const gross = (raw * BPS_DENOMINATOR) / TRADE_FEE_BPS;
+  const gross = (raw * BPS_DENOMINATOR) / POOL_TRADE_FEE_BPS;
   return Quote.fromRaw(fee.token, gross - raw);
 }
 
@@ -469,7 +478,11 @@ export interface PoolBuyQuote {
   readonly quoteIn: QuoteAmount;
   /** What they receive. */
   readonly tokensOut: Tokens;
-  /** arcnow.io's 1%, charged in the quote by the hook inside the swap. */
+  /**
+   * The hook's 0.80%, charged in the quote inside the swap. The pool's 0.20%
+   * LP fee is not listed separately: it is inside the price
+   * {@link PoolBuyQuote.tokensOut} reflects. See {@link Pool.fees}.
+   */
   readonly feeQuote: QuoteAmount;
 }
 
@@ -481,8 +494,23 @@ export interface PoolSellQuote {
   readonly tokensIn: Tokens;
   /** What they receive, **net** of the fee, in the pool's quote. */
   readonly quoteOut: QuoteAmount;
-  /** arcnow.io's 1%, already deducted from {@link PoolSellQuote.quoteOut}. */
+  /** The hook's 0.80%, already deducted from {@link PoolSellQuote.quoteOut}. */
   readonly feeQuote: QuoteAmount;
+}
+
+/**
+ * What a trade in this pool costs, and to whom: the hook's rate read off the
+ * hook, the LP fee read off the key, and their total in bps of the trade.
+ */
+export interface PoolFees {
+  /** What the hook takes, bps of the trade: 80. Read from `feeBps()`. */
+  readonly hookFeeBps: Bps;
+  /** The pool's LP fee, in hundredths of a bip: 2000, 0.20%. Read from the key. */
+  readonly lpFeePips: number;
+  /** The two together, bps of the trade: 100, the same as the curve charged. */
+  readonly totalBps: Bps;
+  /** How the hook splits its fee: creator, platform, protocol; the ref share is zero. */
+  readonly split: FeeConfig;
 }
 
 /** What a pool trade actually did. */
@@ -500,7 +528,7 @@ export interface PoolTradeResult {
   /** The token leg, read out of the token's own `Transfer` log in this receipt. */
   readonly tokens: Tokens;
   /**
-   * arcnow.io's 1%, as the hook's own `HookFeeTaken` logs for this pool and quote
+   * The hook's 0.80%, as the hook's own `HookFeeTaken` logs for this pool and quote
    * record it. **Zero** when a trade's fee floored to zero, which emits no log.
    * The hook accrues it as an ERC-6909 claim and pays it out in a later
    * transaction.
@@ -926,12 +954,13 @@ export class Pool {
    *
    * Not arithmetic. The router is called for real, against the real pool, at
    * the latest block, with a state override supplying the money — and the
-   * `BalanceDelta` it returns is the trader's own, **with the hook's 1% already
-   * inside it**. That is the only way to be right here: there is no quoter on
-   * this chain, and the migrator's two single-sided positions plus whatever
-   * anyone has added since mean the closed-form tick maths does not apply.
+   * `BalanceDelta` it returns is the trader's own, **with the hook's 0.80% and
+   * the pool's LP fee already inside it**. That is the only way to be right
+   * here: there is no quoter on this chain, and the migrator's two single-sided
+   * positions plus whatever anyone has added since mean the closed-form tick
+   * maths does not apply.
    *
-   * The fee is then derived from the identity `usdcIn * 1% `, which holds
+   * The fee is then derived from the identity `usdcIn * 0.80%`, which holds
    * because the hook takes its cut before the pool sees the input. See
    * {@link buyFeeFromUsdcIn}.
    */
@@ -1277,8 +1306,9 @@ export class Pool {
 
   /**
    * The `VERSION()` of this pool's fee hook, read off the chain. The one this SDK
-   * books fees for is `arcnow/arc-now-fee-hook@3.x.x`, which accrues each fee as
-   * an ERC-6909 claim and pays it out in a later transaction.
+   * books fees for is `arcnow/arc-now-fee-hook@4.x.x`, which takes the pool's own
+   * 0.80%, accrues each fee as an ERC-6909 claim and pays it out in a later
+   * transaction.
    */
   async hookVersion(): Promise<string> {
     const { hooks } = await this.key();
@@ -1293,7 +1323,7 @@ export class Pool {
   /**
    * Refuse, once per handle, a pool whose migrator is not
    * `arcnow/uniswap-v4-migrator@2.x.x` or whose fee hook is not
-   * `arcnow/arc-now-fee-hook@3.x.x`. Every quote and trade asks before it
+   * `arcnow/arc-now-fee-hook@4.x.x`. Every quote and trade asks before it
    * simulates: another hook's fee events have another signature, and a fill read
    * against the wrong one silently reports no fee and the wrong amount.
    */
@@ -1340,22 +1370,94 @@ export class Pool {
 
   /**
    * The pool's hook, or `UnknownHookVersion` for a hook that is not
-   * `arcnow/arc-now-fee-hook@3.x.x` — how any other hook books its fees is
-   * unknown, so nothing is read from it or sent to it.
+   * `arcnow/arc-now-fee-hook@4.x.x` — how any other hook books its fees, and at
+   * what rate, is unknown, so nothing is read from it or sent to it. The retired
+   * `@3.x.x` hook, which charged the curve's 1% in the pool, is refused by name.
    */
   private async requireHook(): Promise<Address> {
     const [version, { hooks }] = await Promise.all([this.hookVersion(), this.key()]);
-    if (/^arcnow\/arc-now-fee-hook@3\.\d+\.\d+$/.test(version)) return hooks;
-    throw new ArcNowError({
-      code: "UnknownHookVersion",
-      message:
-        `${this.token}'s pool carries a fee hook at ${hooks} answering VERSION() `
-        + `${JSON.stringify(version)}, which is not arcnow/arc-now-fee-hook@3.x.x, the hook that `
-        + "accrues its fee as a PoolManager claim and pays it out in a later transaction. This "
-        + "SDK will not guess how another hook books its fees, so nothing was read from it or "
-        + "sent to it.",
-      details: { token: this.token, hook: hooks, version },
+    try {
+      assertHookVersion(version, `${this.token}'s pool's fee hook at ${hooks}`, hooks);
+    } catch (error) {
+      if (error instanceof ArcNowError && error.code === "UnknownHookVersion") {
+        throw new ArcNowError({
+          code: "UnknownHookVersion",
+          message:
+            `${error.message} This SDK will not guess how another hook books its fees, so `
+            + "nothing was read from it or sent to it.",
+          details: { token: this.token, hook: hooks, version },
+        });
+      }
+      throw error;
+    }
+    return hooks;
+  }
+
+  /**
+   * What the hook takes on every swap of this pool, bps of the trade, **read
+   * off the hook** (`feeBps()`): 80, 0.80%. Not the curve's 100 — the pool's
+   * LP fee makes up the rest; see {@link Pool.fees}.
+   *
+   * @throws {ArcNowError} `UnknownHookVersion` on a hook of any other version.
+   */
+  async hookFeeBps(): Promise<Bps> {
+    const hooks = await this.requireHook();
+    return withMappedErrors({ functionName: "feeBps", address: hooks }, async () =>
+      Bps.of(await this.ctx.publicClient.readContract({
+        address: hooks,
+        abi: arcNowFeeHookAbi,
+        functionName: "feeBps",
+      })));
+  }
+
+  /**
+   * How the hook splits this pool's fee, **read off the hook**
+   * (`feeConfigOf(poolId)`): creator 5000 / platform 1875 / protocol 3125 bps
+   * of the hook's 0.80%, a referrer share of zero, and the platform and protocol
+   * recipients the pool was registered with. Written by the migrator at
+   * graduation from the hook's own constants — not the curve's split, which a
+   * platform configures — and immutable thereafter.
+   *
+   * @throws {ArcNowError} `UnknownHookVersion` on a hook of any other version.
+   */
+  async feeConfig(): Promise<FeeConfig> {
+    const hooks = await this.requireHook();
+    const poolId = await this.poolId();
+    return withMappedErrors({ functionName: "feeConfigOf", address: hooks }, async () => {
+      const config = await this.ctx.publicClient.readContract({
+        address: hooks,
+        abi: arcNowFeeHookAbi,
+        functionName: "feeConfigOf",
+        args: [poolId],
+      });
+      return {
+        creatorShareBps: Bps.of(config.creatorShareBps),
+        platformShareBps: Bps.of(config.platformShareBps),
+        refShareBps: Bps.of(config.refShareBps),
+        protocolShareBps: Bps.of(config.protocolShareBps),
+        platformRecipient: config.platformRecipient,
+        protocolRecipient: config.protocolRecipient,
+      };
     });
+  }
+
+  /**
+   * What a trade in this pool costs, all told: the hook's 0.80%
+   * ({@link Pool.hookFeeBps}) plus the pool's 0.20% LP fee (the key's `fee`,
+   * in hundredths of a bip), 1.00% of the trade — the same as the curve charged
+   * before graduation — and how the hook's part is split
+   * ({@link Pool.feeConfig}). Every figure is read off the chain.
+   */
+  async fees(): Promise<PoolFees> {
+    const [hookFeeBps, split, key] = await Promise.all([
+      this.hookFeeBps(), this.feeConfig(), this.key(),
+    ]);
+    return {
+      hookFeeBps,
+      lpFeePips: key.fee,
+      totalBps: Bps.of(hookFeeBps.bps + BigInt(key.fee) / 100n),
+      split,
+    };
   }
 
   /**
@@ -1384,15 +1486,15 @@ export class Pool {
 
   /**
    * Pay out this pool's accrued fees now: the hook's permissionless
-   * `distributeFees(key)`, which anyone may call and which pays the usual five
-   * recipients, never the caller.
+   * `distributeFees(key)`, which anyone may call and which pays the pool's
+   * three recipients — creator, platform, protocol — never the caller.
    *
    * Only claims from **earlier** transactions are paid; a fee charged in the
    * same transaction stays accrued. The amount is read from the
    * `FeesDistributed` log in this transaction's receipt.
    *
    * @throws {ArcNowError} `UnknownHookVersion` on a hook that is not
-   *   `arcnow/arc-now-fee-hook@3.x.x`, before anything is simulated.
+   *   `arcnow/arc-now-fee-hook@4.x.x`, before anything is simulated.
    */
   async distributeHookFees(): Promise<{ amount: QuoteAmount; hash: `0x${string}` }> {
     const { wallet, account } = this.ctx.requireSigner("pool.distributeHookFees");

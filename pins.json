@@ -2,20 +2,24 @@
   "$comment": [
     "What this SDK was built against, and the gate that keeps it honest.",
     "",
-    "ONE PIN. 'contracts' is the build of arcnow.io's one stack (the version-2 constant-product curve",
-    "and the claim-based fee hook): its ABIs are abi/*.json and its vectors vectors/vectors.json, pinned",
-    "to the arcnow-io/contracts commit that was DEPLOYED, which networks.json records as contractsCommit.",
+    "ONE PIN. 'contracts' is the build of arcnow.io's one stack (the multi-quote constant-product",
+    "curve under the fee model with no developer share, and the claim-based fee hook with the pool's",
+    "own 0.80% rate): its ABIs are abi/*.json and its vectors vectors/vectors.json, pinned to the",
+    "arcnow-io/contracts commit that records BOTH deployments, Arc testnet and Arc mainnet, which",
+    "networks.json records as contractsCommit.",
     "",
     "The maintainers' pin gate enforces, and their preflight runs it:",
     "",
     "  1. ALWAYS - every file under abi/ and vectors/ hashes to what is recorded here; the ABI set has",
-    "     the version-2 curve's shape (y0Wad and virtualTokenReserveWad, no kWad) so a set from another",
-    "     build cannot be recorded as this one; and the generated copies under rust/src/generated/ and",
-    "     typescript/src/generated/ are byte-identical projections.",
+    "     the fee-model curve's shape (y0Wad and virtualTokenReserveWad, no kWad, a three-address",
+    "     previewFeeSplit and no devShareBps anywhere) so a set from another build cannot be recorded",
+    "     as this one; and the generated copies under rust/src/generated/ and typescript/src/generated/",
+    "     are byte-identical projections.",
     "",
     "  2. WHEN A CONTRACTS CHECKOUT IS PRESENT - the same bytes exist at the pinned commit, and",
-    "     networks.json matches the deployment record in exports/addresses.json at 'addresses.commit'.",
-    "     The gate takes the checkout's path; it can be told to treat a missing one as a failure.",
+    "     networks.json matches the deployment record in exports/addresses.json at 'addresses.commit',",
+    "     for every network the record and this file both name. The gate takes the checkout's path;",
+    "     it can be told to treat a missing one as a failure.",
     "",
     "MOVING A PIN is a commit of its own: change the commit, re-copy from exports/, record the hashes,",
     "re-run the sync and the preflight, and say what changed in the ABIs."
@@ -64,28 +68,33 @@
   },
   "contracts": {
     "repo": "arcnow-io/contracts",
-    "commit": "327f45b4763ab7f2ba5fc8cc0426b3d02e63f816",
+    "commit": "e461106e2c6a0361b8c5463db292b73ad8691599",
     "why": [
-      "The multi-quote stack as DEPLOYED on Arc testnet: arcnow-io/contracts main at 327f45b (#26,",
-      "the deployment record for the stack built at 0d2472f — #22's frozen ABI, #23's ERC-20",
-      "implementation, #24's follow-ups). Native USDC and allowlisted ERC-20 quotes (bonding-curve@3.x,",
-      "quote registry, per-quote templates, the fee-share gas guard). exports/abi is byte-identical to",
-      "3920c4a: the ABI did not change after #22."
+      "The fee-model (v4) stack as DEPLOYED on Arc testnet AND Arc mainnet: arcnow-io/contracts main at",
+      "e461106 (#32, the mainnet deployment record). The build is #27's fee model - no developer share,",
+      "FeeShare {Creator, Platform, Ref, Protocol}, the curve's 1.00% split creator 3000 / ref 1000 /",
+      "platform 3500 / protocol 2500, and a pool whose hook takes its own 0.80% split creator 5000 /",
+      "platform 1875 / protocol 3125 beside a 0.20% LP fee; launching is free (LAUNCH_FEE_WAD = 0).",
+      "exports/abi is byte-identical at a514e0a (the commit the testnet manifest records), at 5f1ceb4",
+      "(the commit the mainnet manifest records) and at e461106: the ABI did not change after #27.",
+      "Versions: bonding-curve@4.0.0, curve-factory@4.0.0, platform-config@4.0.0, platform-registry@4.0.0,",
+      "arc-now-fee-hook@4.0.0, token-factory@2.0.0; launchpad@3.0.0, quote-registry@1.0.0,",
+      "migrator-registry@1.1.0 and uniswap-v4-migrator@2.0.0 are unchanged."
     ],
     "local_path": "abi",
     "exports_path": "exports/abi",
     "abi_sha256": {
-      "ArcNowFeeHook.json": "e02d6516f346c79293dfc6a9620012cc159756d75ac123159d7c58c7891ef1df",
-      "ArcToken.json": "aea3054cd7401d155c335487cd90edc68e5639c684d3ce60813e61bf7563e3f3",
-      "BondingCurve.json": "d2799a3ac8d44ac2eada107526462d1e9f13c3b866f072575499c81a5f83fa7e",
-      "CurveFactory.json": "00a3e90e861c1a00594c8255ddff9c45c435c9184fc86c4f8326f9498f3e1036",
+      "ArcNowFeeHook.json": "f8d611f24934b3de6367d825018db3bace7cf805e2ae0b7d274d18d0267ecc8d",
+      "ArcToken.json": "681291d8491d795735385314e0c22c2b4e6db40f408008329bab3cd2e7a65091",
+      "BondingCurve.json": "e161141f8f7e2c9f685d3a9a1661f4d1f727d62bae0dfd35aac80e6f70ee74a4",
+      "CurveFactory.json": "20d5ef8ab4c11897600c5993daefc0341d56cd0ad316b77f7396136eacd3228c",
       "EscrowMigrator.json": "0334aacdf21a0ac5009d7691ee8cae6c27bc37168d7163b10b9f4a8912b79fad",
       "Launchpad.json": "04aef2d078aae940d141161c8336a42deedc492b04281d63aad5786582fb9c3c",
       "MigratorRegistry.json": "f4eaab8cfeca96cf6588ee936ca514424e0bcd0681062e11243407eec3e3e55d",
-      "PlatformConfig.json": "fb29a897d6aeca3d397e2b548e56a1a002f704b8edff8f44d283524eb73cc106",
-      "PlatformRegistry.json": "68e0e72963174ea370a4489093500a66009e78c2688a2a63da5585be36013e38",
+      "PlatformConfig.json": "fdf1bc1c548427b282e56497ea0179586cd8c14b09eff5ac4ddd97b9b4954ffd",
+      "PlatformRegistry.json": "e8e4aedc253fc76fd9903eb239ef68cac788ae4baff788f44fa768b4d8761c91",
       "QuoteRegistry.json": "2625a7b2eb6be9a21350eaa0bbe01949a6fc40b31933aee8adcb506021f5b831",
-      "TokenFactory.json": "b0ab0d9a3ae3b067ae8d646eb78e41f0f41dcdb852d5dca7f9da9634273aa082",
+      "TokenFactory.json": "14417b41297c4c00712d488d0d203c8bb274707308cc20748929b7a7db67b78e",
       "UniswapV2Migrator.json": "1b54e6429e9faa1c8059e2752399a03946780321d7c5a2a97e48670d75cb1541",
       "UniswapV3Migrator.json": "fe31bbb07c014d608d34f6cfbbbd4e8310d1d9c5831c7002a827dd960758384b",
       "UniswapV4Migrator.json": "902bf64316c4cee9ce64acaacb4f305a56815920718ea090b3c4042c6c3ae6d6",
@@ -94,41 +103,43 @@
     "vectors": {
       "vectors/vectors.json": {
         "path": "exports/vectors.json",
-        "sha256": "e01a2dcd975717329874095b480446abeb7044b110acfa90a454e8994ebfe19a"
+        "sha256": "118f96b3eea5d1618259f0192863a991135083265823a712b7e8c2c94beb5de6"
       }
     },
     "deployment": {
       "$comment": [
         "WHETHER THE ABIs ABOVE ARE DEPLOYED. 'deployed' means the pinned ABIs are what is on chain:",
         "networks.json records the addresses of this same build, its contractsCommit equals the pin, and",
-        "the template gate compares the live platform's template against curve-templates.json rather than",
-        "reporting it as pre-multi-quote. It was 'pending' while the multi-quote ABIs were ahead of the",
-        "version-2 stack deployed from 735db85; the v3 stack was broadcast at block 62,226,550."
+        "the template gate compares each live platform's template against curve-templates.json. The",
+        "fee-model stack was broadcast on Arc testnet at block 62,386,232 and on Arc mainnet at block",
+        "21,179,866; the retired multi-quote (v3) testnet stack of 327f45b, at 62,226,550, is gone from",
+        "arcnow.io and its data was wiped."
       ],
       "status": "deployed"
     }
   },
   "addresses": {
     "$comment": [
-      "networks.json against arcnow-io/contracts exports/addresses.json, the deployment record.",
-      "The pin gate compares every address (case-insensitively), every contractVersions entry and the",
-      "deployment block, and fails if either file carries a legacyStacks key: there is one stack. The",
+      "networks.json against arcnow-io/contracts exports/addresses.json, the deployment record, for",
+      "EVERY network listed under 'networks' here: Arc testnet (5042002) and Arc mainnet (5042). The pin",
+      "gate compares every address (case-insensitively), every contractVersions entry and the deployment",
+      "block, and fails if either file carries a legacyStacks key: there is one stack per chain. The",
       "SDKs' arcnowPlatform is the record's platform, and the SDKs' deployedAtBlock the record's",
-      "deploymentBlock; both are public API in both SDKs. quoteRegistry is compared the same way: the",
-      "record names it once the multi-quote stack is deployed, and both are null until then."
+      "deploymentBlock; both are public API in both SDKs. quoteRegistry is compared the same way."
     ],
     "repo": "arcnow-io/contracts",
-    "commit": "327f45b4763ab7f2ba5fc8cc0426b3d02e63f816",
+    "commit": "e461106e2c6a0361b8c5463db292b73ad8691599",
     "path": "exports/addresses.json",
     "networks": {
-      "arc-testnet": "5042002"
+      "arc-testnet": "5042002",
+      "arc-mainnet": "5042"
     }
   },
   "chain": {
-    "$comment": "Where the tests fork from, and at which block. Addresses live in networks.json, not here. The block is PINNED so a fork suite asserts against the same chain state on every run: 62226900 is after the multi-quote stack's deployment (62226550), after arcnow.io's platform was set to the testnet template, and after EURC was registered, so the addresses networks.json records carry code in the fork and the suites read the live stack as well as deploying their own. It was 61926859 while the version-2 stack was live. Override with ARCNOW_SDK_FORK_BLOCK=<n> (or 'latest') to fork elsewhere; the public endpoint serves historical state.",
+    "$comment": "Where the tests fork from, and at which block. Addresses live in networks.json, not here. The block is PINNED so a fork suite asserts against the same chain state on every run: 62390000 is after the fee-model stack's deployment on Arc testnet (62,386,232), after arcnow.io's platform was set to the testnet template for both quotes and after EURC was registered, so the addresses networks.json records carry code in the fork and the suites read the live stack as well as deploying their own. It was 62226900 while the multi-quote (v3) stack was live, and 61926859 while the version-2 stack was. Override with ARCNOW_SDK_FORK_BLOCK=<n> (or 'latest') to fork elsewhere; the public endpoint serves historical state.",
     "fork_url": "https://rpc.testnet.arc.io",
     "chain_id": 5042002,
-    "fork_block_number": 62226900
+    "fork_block_number": 62390000
   },
   "images": {
     "$comment": "Pinned, never 'latest'. The same Foundry image arcnow-io/e2e-tests pins, so a fork that behaves differently there behaves differently here for a reason somebody chose.",

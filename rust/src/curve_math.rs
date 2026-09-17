@@ -4,16 +4,19 @@
 //! # One curve
 //!
 //! Every arcnow.io bonding curve is the **constant-product** curve,
-//! `arcnow/bonding-curve@3.x.x`, quoted in native USDC or an allowlisted ERC-20:
+//! `arcnow/bonding-curve@4.x.x`, quoted in native USDC or an allowlisted ERC-20:
 //! `k = r0 · y0`, `Y = y0 - sold`,
 //! `C(Y) = ceil(k / Y)`. No transcendentals — one 512-bit multiply and one
 //! divide per reserve.
 //!
 //! [`check_curve_version`] is the one place that decides whether a
-//! `VERSION()` is a curve this crate prices. Anything but a `@3.x.x` bonding
-//! curve — **including the single-quote `@2.x.x` one** — is refused with
-//! [`Error::UnknownCurveVersion`], naming the version, because pricing an
-//! unknown curve with these formulas is a price the chain will not honour.
+//! `VERSION()` is a curve this crate prices. Anything but a `@4.x.x` bonding
+//! curve — **including the retired multi-quote `@3.x.x` one, whose trades took
+//! a developer address this ABI does not have, and the single-quote `@2.x.x`**
+//! — is refused with [`Error::UnknownCurveVersion`], naming the version,
+//! because pricing an unknown curve with these formulas is a price the chain
+//! will not honour. The maths did not change between 3 and 4; the fee model
+//! and the call signatures did.
 //!
 //! # Why a local port at all
 //!
@@ -44,38 +47,41 @@ use crate::error::Error;
 // which versions are priced
 // ---------------------------------------------------------------------------
 
-/// Accept `arcnow/bonding-curve@3.x.x` and nothing else.
+/// Accept `arcnow/bonding-curve@4.x.x` and nothing else.
 ///
 /// # Errors
 ///
 /// [`Error::UnknownCurveVersion`], naming the string, for a bonding curve of
-/// any other version — `@2.x.x` (the single-quote curve), `@1.x.x` (the
-/// retired linear curve), a missing part, a pre-release suffix. [`Error::AddressIsNotACurve`] for a
+/// any other version — `@3.x.x` (the retired multi-quote curve, with a
+/// developer share), `@2.x.x` (the single-quote curve), `@1.x.x` (the retired
+/// linear curve), a missing part, a pre-release suffix. [`Error::AddressIsNotACurve`] for a
 /// string that is not a bonding curve's version at all: another component's
-/// (`arcnow/arc-token@1.0.0` is a token), or no arcnow.io version.
+/// (`arcnow/arc-token@2.0.0` is a token), or no arcnow.io version.
 pub fn check_curve_version(version: &str) -> Result<(), Error> {
     if !version.starts_with("arcnow/bonding-curve@") {
         return Err(Error::AddressIsNotACurve { address: None, version: Some(version.to_owned()) });
     }
-    check_component_version("bonding-curve", 3, version)
+    check_component_version("bonding-curve", 4, version)
 }
 
-/// Accept `arcnow/platform-config@3.x.x`: a platform with one template per
-/// quote, read with `curveParametersFor(quote)`.
+/// Accept `arcnow/platform-config@4.x.x`: a platform with one template per
+/// quote, read with `curveParametersFor(quote)`, and a two-share
+/// `setFeeShares(creator, ref)`.
 ///
 /// # Errors
 /// [`Error::UnknownCurveVersion`] for anything else.
 pub fn check_platform_version(version: &str) -> Result<(), Error> {
-    check_component_version("platform-config", 3, version)
+    check_component_version("platform-config", 4, version)
 }
 
-/// Accept `arcnow/platform-registry@3.x.x`: a registry that registers
-/// platforms with a native `targetQuoteWad` template.
+/// Accept `arcnow/platform-registry@4.x.x`: a registry that registers
+/// platforms with a creator share, a ref share and a native `targetQuoteWad`
+/// template.
 ///
 /// # Errors
 /// [`Error::UnknownCurveVersion`] for anything else.
 pub fn check_registry_version(version: &str) -> Result<(), Error> {
-    check_component_version("platform-registry", 3, version)
+    check_component_version("platform-registry", 4, version)
 }
 
 /// Accept `arcnow/quote-registry@1.x.x`, the allowlist of quote tokens.

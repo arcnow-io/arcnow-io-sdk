@@ -80,7 +80,7 @@ export type SdkErrorCode
     | "UnknownCurveVersion"
   /**
    * The address is not a bonding curve at all: it answered a `VERSION()` that is
-   * not `arcnow/bonding-curve@…` (a token's `arcnow/arc-token@1.0.0`, a
+   * not `arcnow/bonding-curve@…` (a token's `arcnow/arc-token@2.0.0`, a
    * factory's), or answered no `VERSION()` — no code, a revert, no data.
    * `details.version` and `details.component` say what it claimed to be,
    * `details.address` where it is. Distinct from `UnknownCurveVersion`, which is

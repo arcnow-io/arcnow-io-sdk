@@ -2,14 +2,16 @@
  * Which contracts this SDK will price, decided by each contract's own
  * `VERSION()`.
  *
- * arcnow.io has one bonding curve: the multi-quote constant-product curve,
- * `arcnow/bonding-curve@3.x.x`, with parameters `{ r0Wad, y0Wad }` and a quote
- * token. Every price, quote, trade and template decode starts by asking the
- * contract which version it is, and anything but that one is refused by name:
+ * arcnow.io has one bonding curve: the constant-product curve under the
+ * fee model with no developer share, `arcnow/bonding-curve@4.x.x`, with
+ * parameters `{ r0Wad, y0Wad }` and a quote token. Every price, quote, trade
+ * and template decode starts by asking the contract which version it is, and
+ * anything but that one is refused by name:
  *
  * | `VERSION()` | outcome |
  * | --- | --- |
- * | `arcnow/bonding-curve@3.x.x` | priced and traded |
+ * | `arcnow/bonding-curve@4.x.x` | priced and traded |
+ * | `arcnow/bonding-curve@3.x.x` | `UnknownCurveVersion`, naming the retired multi-quote stack |
  * | another `arcnow/bonding-curve@…`, or malformed | `UnknownCurveVersion`, naming it |
  * | anything not `arcnow/bonding-curve@…` | `AddressIsNotACurve`, naming what it is |
  *
@@ -79,13 +81,26 @@ export function notACurve(options: {
 
 /** The major version this SDK speaks, per component. */
 const MAJOR = {
+  "bonding-curve": "4",
+  "platform-config": "4",
+  "platform-registry": "4",
+  "arc-now-fee-hook": "4",
+  "quote-registry": "1",
+  "launchpad": "3",
+  "uniswap-v4-migrator": "2",
+} as const;
+
+/**
+ * The major of each component in the retired multi-quote (v3) stack, whose
+ * contracts carried a developer fee share and whose fee hook charged the
+ * curve's 1% in the pool. That stack is gone from arcnow.io's networks and its
+ * data was wiped; a contract still answering with it is refused by name.
+ */
+const RETIRED_MULTI_QUOTE_MAJOR = {
   "bonding-curve": "3",
   "platform-config": "3",
   "platform-registry": "3",
   "arc-now-fee-hook": "3",
-  "quote-registry": "1",
-  "launchpad": "3",
-  "uniswap-v4-migrator": "2",
 } as const;
 
 type Component = keyof typeof MAJOR;
@@ -100,16 +115,26 @@ function assertMajor(
   const major = MAJOR[component];
   const match = SEMVER.exec(version);
   if (match?.[1] === component && match[2] === major) return;
-  const predatesQuotes = match?.[1] === component && Number(match[2]) < Number(major);
+  const sameComponent = match?.[1] === component;
+  const retired = (RETIRED_MULTI_QUOTE_MAJOR as Record<string, string | undefined>)[component];
+  const isRetiredMultiQuote = sameComponent && retired !== undefined && match[2] === retired;
+  const predatesQuotes = sameComponent && !isRetiredMultiQuote && Number(match[2]) < Number(major);
   throw new ArcNowError({
     code,
     message:
       `${what} answers VERSION() ${JSON.stringify(version)}, which is not a version this SDK `
-      + `prices. The one it speaks is arcnow/${component}@${major}.x.x, the multi-quote stack `
-      + "whose curves are priced in a quote token (native USDC or an allowlisted ERC-20); any "
-      + "other version is refused rather than priced, because another build can put another "
-      + "quantity in the same slots and a guess would produce a plausible, wrong number. No "
-      + "local maths and no trade will be attempted. "
+      + `prices. The one it speaks is arcnow/${component}@${major}.x.x, the fee-model stack: `
+      + "curves priced in a quote token (native USDC or an allowlisted ERC-20), a fee split "
+      + "between creator, referrer, platform and protocol, and a pool that charges its own "
+      + "0.80% under the hook; any other version is refused rather than priced, because "
+      + "another build can put another quantity in the same slots and a guess would produce a "
+      + "plausible, wrong number. No local maths and no trade will be attempted. "
+      + (isRetiredMultiQuote
+        ? `This is the retired multi-quote stack (arcnow/${component}@${retired}.x.x), which `
+        + "carried a developer share in its fee split and charged the curve's 1% in the pool. "
+        + "It is gone from arcnow.io's networks and its data was wiped; nothing this SDK "
+        + "speaks is deployed at that address any more. "
+        : "")
       + (predatesQuotes
         ? "This build predates quote tokens: it is the version-2 stack, which this SDK no longer "
         + "speaks. "
@@ -124,10 +149,11 @@ function assertMajor(
  *
  * Two different refusals, because they mean different things to a caller: a
  * string that is not `arcnow/bonding-curve@…` at all (a token's
- * `arcnow/arc-token@1.0.0`, a factory's, an empty string) is
+ * `arcnow/arc-token@2.0.0`, a factory's, an empty string) is
  * `AddressIsNotACurve` and names what the address says it is; a bonding-curve
- * version other than `@3.x.x` — the version-2 stack still live on Arc testnet
- * and the retired `@1.x.x` included — or a malformed one is `UnknownCurveVersion`.
+ * version other than `@4.x.x` — the retired multi-quote `@3.x.x`, the
+ * version-2 `@2.x.x` and the linear `@1.x.x` included — or a malformed one is
+ * `UnknownCurveVersion`.
  *
  * @param subject Names the contract in the refusal, e.g. "the curve at 0x…".
  * @param address The address, carried on `details.address` of a refusal.
@@ -141,8 +167,9 @@ export function assertCurveVersion(version: string, subject = "this curve", addr
 }
 
 /**
- * Refuse a `PlatformConfig` that is not `arcnow/platform-config@3.x.x`, whose
- * templates are per quote and whose fourth field is `y0Wad`.
+ * Refuse a `PlatformConfig` that is not `arcnow/platform-config@4.x.x`, whose
+ * templates are per quote, whose fourth field is `y0Wad`, and whose fee shares
+ * are creator and referrer only (the platform's is the residual).
  *
  * @throws {ArcNowError} `UnknownCurveVersion`, with `details.component`.
  */
@@ -151,7 +178,7 @@ export function assertPlatformVersion(version: string, subject = "this platform"
 }
 
 /**
- * Refuse a `PlatformRegistry` that is not `arcnow/platform-registry@3.x.x`.
+ * Refuse a `PlatformRegistry` that is not `arcnow/platform-registry@4.x.x`.
  *
  * @throws {ArcNowError} `UnknownCurveVersion`, with `details.component`.
  */
@@ -200,9 +227,10 @@ export function assertV4MigratorVersion(
 }
 
 /**
- * Refuse a v4 fee hook that is not `arcnow/arc-now-fee-hook@3.x.x`: the hook that
- * accrues its fee in the pool's quote currency, in raw units, and pays it out in
- * a later transaction.
+ * Refuse a v4 fee hook that is not `arcnow/arc-now-fee-hook@4.x.x`: the hook that
+ * takes the pool's own 0.80% in the pool's quote currency, in raw units, splits
+ * it creator / platform / protocol, accrues it and pays it out in a later
+ * transaction.
  *
  * @throws {ArcNowError} `UnknownHookVersion`, with `details.component`.
  */

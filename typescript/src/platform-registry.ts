@@ -52,13 +52,11 @@ export interface PlatformSettings {
   readonly creatorShareBps: Bps;
   /** Referrer's share, bps of the fee. */
   readonly refShareBps: Bps;
-  /** Developer's share, bps of the fee. */
-  readonly devShareBps: Bps;
   /** The platform's own share: the residual. Not an input anywhere. */
   readonly platformShareBps: Bps;
   /** Where this platform's tokens graduate to unless the creator picks otherwise. */
   readonly defaultMigrator: Address;
-  /** The platform's `VERSION()`: always `arcnow/platform-config@2.x.x`, or it is refused. */
+  /** The platform's `VERSION()`: always `arcnow/platform-config@4.x.x`, or it is refused. */
   readonly version: string;
 }
 
@@ -187,7 +185,6 @@ export class PlatformRegistry {
           creatorShareBps: Bps.of(config.creatorShareBps),
           platformShareBps: Bps.of(config.platformShareBps),
           refShareBps: Bps.of(config.refShareBps),
-          devShareBps: Bps.of(config.devShareBps),
           protocolShareBps: Bps.of(config.protocolShareBps),
           platformRecipient: config.platformRecipient,
           protocolRecipient: config.protocolRecipient,
@@ -196,7 +193,7 @@ export class PlatformRegistry {
     );
   }
 
-  /** Refuse this registry unless it is `arcnow/platform-registry@2.x.x`. */
+  /** Refuse this registry unless it is `arcnow/platform-registry@4.x.x`. */
   private async assertRegistry(): Promise<void> {
     const version = await withMappedErrors({ functionName: "VERSION", address: this.address }, () =>
       this.ctx.publicClient.readContract({
@@ -234,14 +231,13 @@ export class PlatformRegistry {
         assertPlatformVersion(version, `the platform at ${platform}`, platform);
         const common = { address: platform, abi: platformConfigAbi } as const;
         const [
-          admin, feeRecipient, creatorShareBps, refShareBps, devShareBps,
+          admin, feeRecipient, creatorShareBps, refShareBps,
           platformShareBps, defaultMigrator,
         ] = await Promise.all([
           this.ctx.publicClient.readContract({ ...common, functionName: "admin" }),
           this.ctx.publicClient.readContract({ ...common, functionName: "feeRecipient" }),
           this.ctx.publicClient.readContract({ ...common, functionName: "creatorShareBps" }),
           this.ctx.publicClient.readContract({ ...common, functionName: "refShareBps" }),
-          this.ctx.publicClient.readContract({ ...common, functionName: "devShareBps" }),
           this.ctx.publicClient.readContract({ ...common, functionName: "platformShareBps" }),
           this.ctx.publicClient.readContract({ ...common, functionName: "defaultMigrator" }),
         ]);
@@ -250,7 +246,6 @@ export class PlatformRegistry {
           feeRecipient,
           creatorShareBps: Bps.of(creatorShareBps),
           refShareBps: Bps.of(refShareBps),
-          devShareBps: Bps.of(devShareBps),
           platformShareBps: Bps.of(platformShareBps),
           defaultMigrator,
           version,
@@ -302,9 +297,9 @@ export class PlatformRegistry {
    * which is the default.
    *
    * {@link NewPlatform} has **no platform-share field**. The platform's own cut
-   * is the residual — `10000 - protocol - creator - ref - dev` — and this method
+   * is the residual — `10000 - protocol - creator - ref` — and this method
    * computes it and returns it so the caller can see what they chose. The
-   * `creator + ref + dev <= 7500` rule is checked here, before any gas is
+   * `creator + ref <= 7500` rule is checked here, before any gas is
    * spent, with an error that states the residual being asked for.
    */
   /**
@@ -371,7 +366,6 @@ export class PlatformRegistry {
           platform.feeRecipient,
           platform.creatorShareBps.bps,
           platform.refShareBps.bps,
-          platform.devShareBps.bps,
           platform.defaultMigrator,
         ] as const;
         const { request, result } = await this.ctx.publicClient.simulateContract({

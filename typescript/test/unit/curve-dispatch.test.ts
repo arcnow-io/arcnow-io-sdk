@@ -109,12 +109,12 @@ function fakes(graduated = false): Record<string, Fake> {
     spotPriceWad: B(cpmmState.spotPriceWad),
   };
   return {
-    [CPMM]: curveAnswers({ version: "arcnow/bonding-curve@3.0.0", ...cpmm, graduated }),
+    [CPMM]: curveAnswers({ version: "arcnow/bonding-curve@4.0.0", ...cpmm, graduated }),
     // The same getters and numbers as a live curve, under the version-2 curve's
     // version, which predates quote tokens: the only thing that may refuse it is
     // the version.
     [RETIRED]: curveAnswers({ version: "arcnow/bonding-curve@2.0.0", ...cpmm }),
-    [FUTURE]: curveAnswers({ version: "arcnow/bonding-curve@4.0.0", ...cpmm }),
+    [FUTURE]: curveAnswers({ version: "arcnow/bonding-curve@5.0.0", ...cpmm }),
     [TOKEN]: {
       answers: {
         VERSION: "arcnow/arc-token@1.0.0",
@@ -136,8 +136,7 @@ function fakes(graduated = false): Record<string, Fake> {
         feeRecipient: SIGNER,
         creatorShareBps: 3000n,
         refShareBps: 1000n,
-        devShareBps: 1000n,
-        platformShareBps: 2500n,
+        platformShareBps: 3500n,
         defaultMigrator: "0x00000000000000000000000000000000000000d0",
         curveParameters: {
           totalSupplyWad: 1n, curveSupplyWad: 1n, y0Wad: 1n, r0Wad: 1n,
@@ -226,7 +225,7 @@ describe("a constant-product curve", () => {
     const state = await curve.state();
     expect(state).not.toHaveProperty("kind");
     expect(state).not.toHaveProperty("stack");
-    expect(state.version).toBe("arcnow/bonding-curve@3.0.0");
+    expect(state.version).toBe("arcnow/bonding-curve@4.0.0");
     expect(state.quoteToken.isNative).toBe(true);
     expect(state.curveSupply.wad).toBe(B(testnet.curveSupplyWad));
     expect(state.tradeFeeBps.bps).toBe(100n);
@@ -248,7 +247,7 @@ describe("a constant-product curve", () => {
 describe("a curve of any other version, including the version-2 curve that predates quote tokens", () => {
   it.each([
     [RETIRED, RETIRED_TOKEN, "arcnow/bonding-curve@2.0.0"],
-    [FUTURE, TOKEN, "arcnow/bonding-curve@4.0.0"],
+    [FUTURE, TOKEN, "arcnow/bonding-curve@5.0.0"],
   ] as const)("%s is refused by name, everywhere, before any maths or trade", async (address, token, version) => {
     const seen: string[] = [];
     const sdk = client(seen);

@@ -295,8 +295,8 @@ fn every_launch_quote_matches_to_the_wei() {
 }
 
 #[test]
-fn only_a_version_3_bonding_curve_is_priced() {
-    for accepted in ["arcnow/bonding-curve@3.0.0", "arcnow/bonding-curve@3.7.11"] {
+fn only_a_version_4_bonding_curve_is_priced() {
+    for accepted in ["arcnow/bonding-curve@4.0.0", "arcnow/bonding-curve@4.7.11"] {
         check_curve_version(accepted).unwrap_or_else(|err| panic!("{accepted}: {err}"));
     }
     // A bonding curve of a version this SDK does not price — the retired
@@ -304,15 +304,18 @@ fn only_a_version_3_bonding_curve_is_priced() {
     for unknown in [
         "arcnow/bonding-curve@1.0.0",
         "arcnow/bonding-curve@1.2.3",
-        // The single-quote curve the live stack still runs: its immutables,
-        // events and payable-only buy are not the multi-quote curve's.
+        // The single-quote curve of the version-2 stack.
         "arcnow/bonding-curve@2.0.0",
         "arcnow/bonding-curve@2.7.11",
-        "arcnow/bonding-curve@4.0.0",
+        // The multi-quote (v3) curve, retired with its developer share: its buy,
+        // sell and previewFeeSplit take a fourth address this ABI does not have.
+        "arcnow/bonding-curve@3.0.0",
+        "arcnow/bonding-curve@3.7.11",
+        "arcnow/bonding-curve@5.0.0",
         "arcnow/bonding-curve@0.9.0",
-        "arcnow/bonding-curve@3",
-        "arcnow/bonding-curve@3.0",
-        "arcnow/bonding-curve@3.0.0-rc1",
+        "arcnow/bonding-curve@4",
+        "arcnow/bonding-curve@4.0",
+        "arcnow/bonding-curve@4.0.0-rc1",
     ] {
         let err = check_curve_version(unknown).unwrap_err();
         assert!(
@@ -340,12 +343,13 @@ fn only_a_version_3_bonding_curve_is_priced() {
         assert!(message.contains(says), "the refusal says what it is: {message}");
         assert!(!message.contains("not a version this SDK can price"), "{message}");
     }
-    curve_math::check_platform_version("arcnow/platform-config@3.0.0").unwrap();
-    curve_math::check_registry_version("arcnow/platform-registry@3.1.0").unwrap();
+    curve_math::check_platform_version("arcnow/platform-config@4.0.0").unwrap();
+    curve_math::check_registry_version("arcnow/platform-registry@4.1.0").unwrap();
     for refused in [
+        "arcnow/platform-config@3.0.0",
         "arcnow/platform-config@2.0.0",
         "arcnow/platform-config@1.0.0",
-        "arcnow/bonding-curve@3.0.0",
+        "arcnow/bonding-curve@4.0.0",
     ] {
         assert!(
             matches!(
@@ -355,14 +359,19 @@ fn only_a_version_3_bonding_curve_is_priced() {
             "{refused}"
         );
     }
-    assert!(matches!(
-        curve_math::check_registry_version("arcnow/platform-registry@2.0.0"),
-        Err(Error::UnknownCurveVersion { .. })
-    ));
+    for refused in ["arcnow/platform-registry@3.0.0", "arcnow/platform-registry@2.0.0"] {
+        assert!(
+            matches!(
+                curve_math::check_registry_version(refused),
+                Err(Error::UnknownCurveVersion { .. })
+            ),
+            "{refused}"
+        );
+    }
 }
 
 #[test]
-fn the_rest_of_the_multi_quote_stack_is_gated_by_major_too() {
+fn the_rest_of_the_stack_is_gated_by_major_too() {
     type Check = fn(&str) -> Result<(), Error>;
     let gates: [(Check, &str, &str); 3] = [
         (
@@ -388,12 +397,25 @@ fn the_rest_of_the_multi_quote_stack_is_gated_by_major_too() {
 }
 
 #[test]
-fn a_version_older_than_the_multi_quote_stack_is_named_as_predating_quote_tokens() {
-    let older = [
-        (
-            curve_math::check_curve_version as fn(&str) -> Result<(), Error>,
-            "arcnow/bonding-curve@2.0.0",
-        ),
+fn a_retired_version_is_named_as_the_stack_it_belonged_to() {
+    type Check = fn(&str) -> Result<(), Error>;
+    // The 3.x build of every component that moved to 4.x is the retired
+    // multi-quote (v3) stack, and the refusal says so by name.
+    let retired: [(Check, &str); 3] = [
+        (curve_math::check_curve_version, "arcnow/bonding-curve@3.0.0"),
+        (curve_math::check_platform_version, "arcnow/platform-config@3.2.0"),
+        (curve_math::check_registry_version, "arcnow/platform-registry@3.0.0"),
+    ];
+    for (check, version) in retired {
+        let message = check(version).unwrap_err().to_string();
+        assert!(message.contains("retired multi-quote (v3) stack"), "{version}: {message}");
+        assert!(message.contains("gone from arcnow.io"), "{version}: {message}");
+        assert!(message.contains("wiped"), "{version}: {message}");
+        assert!(!message.contains("predates quote tokens"), "{version}: {message}");
+    }
+    // Anything older than that predates quote tokens as well.
+    let older: [(Check, &str); 4] = [
+        (curve_math::check_curve_version, "arcnow/bonding-curve@2.0.0"),
         (curve_math::check_platform_version, "arcnow/platform-config@2.0.0"),
         (curve_math::check_launchpad_version, "arcnow/launchpad@2.1.0"),
         (curve_math::check_v4_migrator_version, "arcnow/uniswap-v4-migrator@1.0.0"),
@@ -401,16 +423,16 @@ fn a_version_older_than_the_multi_quote_stack_is_named_as_predating_quote_tokens
     for (check, version) in older {
         let message = check(version).unwrap_err().to_string();
         assert!(message.contains("predates quote tokens"), "{version}: {message}");
+        assert!(!message.contains("retired multi-quote (v3) stack"), "{version}: {message}");
     }
     // A newer build, or some other contract's VERSION(), is not called old.
-    for (check, version) in [
-        (
-            curve_math::check_platform_version as fn(&str) -> Result<(), Error>,
-            "arcnow/platform-config@4.0.0",
-        ),
+    let other: [(Check, &str); 2] = [
+        (curve_math::check_platform_version, "arcnow/platform-config@5.0.0"),
         (curve_math::check_platform_version, "arcnow/arc-token@1.0.0"),
-    ] {
+    ];
+    for (check, version) in other {
         let message = check(version).unwrap_err().to_string();
         assert!(!message.contains("predates quote tokens"), "{version}: {message}");
+        assert!(!message.contains("retired multi-quote"), "{version}: {message}");
     }
 }

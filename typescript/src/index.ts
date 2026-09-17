@@ -101,6 +101,7 @@ export type {
   BalanceDelta,
   PoolBuyQuote,
   PoolBuyRequest,
+  PoolFees,
   PoolFillSource,
   PoolKeyStruct,
   PoolSellQuote,
@@ -141,13 +142,21 @@ export { minQuoteOutFromQuote, minTokensOutFromQuote } from "./slippage.js";
 
 export {
   BPS_DENOMINATOR,
+  FeeShare,
   MAX_PLATFORM_ALLOWANCE_BPS,
+  POOL_CREATOR_SHARE_BPS,
+  POOL_LP_FEE_PIPS,
+  POOL_PLATFORM_SHARE_BPS,
+  POOL_PROTOCOL_SHARE_BPS,
+  POOL_TICK_SPACING,
+  POOL_TOTAL_FEE_BPS,
+  POOL_TRADE_FEE_BPS,
   TRADE_FEE_BPS,
   platformShareBps,
   totalOf,
   validateNewPlatform,
 } from "./fees.js";
-export type { FeeConfig, FeeSplit, NewPlatform } from "./fees.js";
+export type { FeeConfig, FeeShareName, FeeSplit, NewPlatform } from "./fees.js";
 
 export {
   ArcNowError,

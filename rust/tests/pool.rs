@@ -13,19 +13,23 @@
 //!    the class of bug this whole module is about. The expected value here comes
 //!    from `cast index`, not from this crate's own arithmetic, and
 //!    `tests/pool_fork.rs` proves the slot is the one the token really reads.
-//! 3. **The fee identities.** The hook's 1% is already inside the delta the
+//! 3. **The fee identities.** The hook's 0.80% is already inside the delta the
 //!    router returns, so it is *derived* both ways and the two directions are
-//!    not the same formula.
+//!    not the same formula. The pool's other 0.20% is Uniswap's LP fee, inside
+//!    the pool's own price and not the hook's to log.
 //! 4. **The refusals.** No router configured, a router bound to another
 //!    `PoolManager`, a token that has not migrated, and a request built for the
 //!    other venue each have to fail with something a human can act on, before
 //!    anything is sent.
 
 use arcnow_sdk::alloy::primitives::{Address, I256, U256, address};
+use arcnow_sdk::constants::TRADE_FEE_BPS;
 use arcnow_sdk::pool::{
-    POOL_TRADE_FEE_BPS, arc_token_allowance_slot, buy_fee_from_quote_in, pool_currencies,
-    quote_and_token_legs, quote_is_currency0, sell_fee_from_quote_out, sell_gross_from_quote_out,
-    sell_quote_out_from_fee, unpack_balance_delta, zero_for_one,
+    POOL_CREATOR_SHARE_BPS, POOL_LP_FEE_PIPS, POOL_PLATFORM_SHARE_BPS, POOL_PROTOCOL_SHARE_BPS,
+    POOL_TICK_SPACING, POOL_TOTAL_FEE_BPS, POOL_TRADE_FEE_BPS, arc_token_allowance_slot,
+    buy_fee_from_quote_in, pool_currencies, quote_and_token_legs, quote_is_currency0,
+    sell_fee_from_quote_out, sell_gross_from_quote_out, sell_quote_out_from_fee,
+    unpack_balance_delta, zero_for_one,
 };
 use arcnow_sdk::{
     Bps, BuyRequest, Deadline, Error, MigratorInfo, NATIVE_QUOTE, Network, NetworkConfig,
@@ -140,38 +144,66 @@ fn every_pair_gets_its_own_slot() {
 // ------------------------------------------------------------ the fee, derived
 
 #[test]
-fn the_pool_charges_the_same_one_percent_the_curve_does() {
-    assert_eq!(POOL_TRADE_FEE_BPS, Bps::of_trade(100));
-    assert_eq!(POOL_TRADE_FEE_BPS.percent_string(), "1.00");
+fn the_hook_takes_eighty_bps_and_the_pool_costs_the_same_one_percent_the_curve_does() {
+    // ArcConstants.POOL_TRADE_FEE_BPS: the hook takes 0.80%, and Uniswap's LP
+    // fee of 2000 hundredths of a bip (0.20%) is the other half. A migrated
+    // trade costs the trader 1.00% in all - the curve's rate, on both sides of
+    // graduation - and at the 1% the hook used to take it would have cost 1.30%.
+    assert_eq!(POOL_TRADE_FEE_BPS, Bps::of_trade(80));
+    assert_eq!(POOL_TRADE_FEE_BPS.percent_string(), "0.80");
+    assert_eq!(POOL_LP_FEE_PIPS, 2_000);
+    assert_eq!(POOL_TICK_SPACING, 60);
+    assert_eq!(POOL_TOTAL_FEE_BPS, Bps::of_trade(100));
+    assert_eq!(POOL_TOTAL_FEE_BPS, TRADE_FEE_BPS, "the same 1.00% before and after graduation");
+    assert_eq!(POOL_TRADE_FEE_BPS.get() + POOL_LP_FEE_PIPS / 100, POOL_TOTAL_FEE_BPS.get());
 }
 
 #[test]
-fn a_buy_pays_one_percent_of_what_the_trader_sends() {
-    // The pool sees 99% of the input; the hook takes its cut in beforeSwap. So
-    // the amount the trader names IS the gross.
-    assert_eq!(buy_fee_from_quote_in(&Usdc::from_whole(100)), Usdc::from_whole(1));
-    assert_eq!(buy_fee_from_quote_in(&Usdc::parse("25").unwrap()), Usdc::parse("0.25").unwrap());
+fn the_pools_split_has_three_parties_and_totals_the_whole_fee() {
+    // ArcConstants.POOL_*_SHARE_BPS: 5000 / 1875 / 3125 of the hook's 0.80%,
+    // which is 0.40% / 0.15% / 0.25% of a trade. No ref share: a pool has no
+    // argument to name a referrer with.
+    assert_eq!(POOL_CREATOR_SHARE_BPS, Bps::of_fee(5_000));
+    assert_eq!(POOL_PLATFORM_SHARE_BPS, Bps::of_fee(1_875));
+    assert_eq!(POOL_PROTOCOL_SHARE_BPS, Bps::of_fee(3_125));
+    assert_eq!(
+        POOL_CREATOR_SHARE_BPS.get()
+            + POOL_PLATFORM_SHARE_BPS.get()
+            + POOL_PROTOCOL_SHARE_BPS.get(),
+        Bps::DENOMINATOR
+    );
+    assert_eq!(POOL_PROTOCOL_SHARE_BPS.of_trade_equivalent(POOL_TRADE_FEE_BPS), Bps::of_trade(25));
+    assert_eq!(POOL_CREATOR_SHARE_BPS.of_trade_equivalent(POOL_TRADE_FEE_BPS), Bps::of_trade(40));
+    assert_eq!(POOL_PLATFORM_SHARE_BPS.of_trade_equivalent(POOL_TRADE_FEE_BPS), Bps::of_trade(15));
+}
+
+#[test]
+fn a_buy_pays_eighty_bps_of_what_the_trader_sends() {
+    // The pool sees 99.2% of the input; the hook takes its cut in beforeSwap.
+    // So the amount the trader names IS the gross.
+    assert_eq!(buy_fee_from_quote_in(&Usdc::from_whole(100)), Usdc::parse("0.8").unwrap());
+    assert_eq!(buy_fee_from_quote_in(&Usdc::parse("25").unwrap()), Usdc::parse("0.2").unwrap());
     assert_eq!(buy_fee_from_quote_in(&Usdc::ZERO), Usdc::ZERO);
 }
 
 #[test]
 fn a_sell_grosses_up_what_the_trader_received() {
-    // The trader sees 99% of what the pool paid out, so the gross has to be
-    // recovered before the fee can be named: gross = net * 10000 / 9900.
-    let net = Usdc::from_whole(99);
+    // The trader sees 99.2% of what the pool paid out, so the gross has to be
+    // recovered before the fee can be named: gross = net * 10000 / 9920.
+    let net = Usdc::parse("99.2").unwrap();
     assert_eq!(sell_gross_from_quote_out(&net), Usdc::from_whole(100));
-    assert_eq!(sell_fee_from_quote_out(&net), Usdc::from_whole(1));
+    assert_eq!(sell_fee_from_quote_out(&net), Usdc::parse("0.8").unwrap());
 }
 
 #[test]
 fn the_two_directions_are_not_the_same_formula_and_that_is_the_point() {
-    // Applying the buy identity to a sell's output under-reports the fee by 1%
-    // of itself — small, systematic, and exactly the kind of error that shows up
-    // as a penny of drift per trade rather than as a failure.
-    let usdc_out = Usdc::from_whole(99);
+    // Applying the buy identity to a sell's output under-reports the fee by
+    // 0.8% of itself - small, systematic, and exactly the kind of error that
+    // shows up as a penny of drift per trade rather than as a failure.
+    let usdc_out = Usdc::parse("99.2").unwrap();
     assert_ne!(buy_fee_from_quote_in(&usdc_out), sell_fee_from_quote_out(&usdc_out));
-    assert_eq!(buy_fee_from_quote_in(&usdc_out), Usdc::parse("0.99").unwrap());
-    assert_eq!(sell_fee_from_quote_out(&usdc_out), Usdc::from_whole(1));
+    assert_eq!(buy_fee_from_quote_in(&usdc_out), Usdc::parse("0.7936").unwrap());
+    assert_eq!(sell_fee_from_quote_out(&usdc_out), Usdc::parse("0.8").unwrap());
 }
 
 #[test]
@@ -180,7 +212,7 @@ fn net_plus_fee_is_the_gross_a_sell_moved_out_of_the_pool() {
         let net = Usdc::from_whole(whole);
         let gross = sell_gross_from_quote_out(&net);
         let fee = sell_fee_from_quote_out(&net);
-        // Floored twice, so this is an inequality by at most a wei or two — not
+        // Floored twice, so this is an inequality by at most a wei or two - not
         // an equality dressed up as one.
         let reconstructed = net.add(&fee).unwrap();
         assert!(
@@ -194,8 +226,11 @@ fn net_plus_fee_is_the_gross_a_sell_moved_out_of_the_pool() {
 #[test]
 fn the_fee_on_a_single_wei_rounds_to_nothing_rather_than_up() {
     let wei = Usdc::from_wad(U256::from(1));
-    assert_eq!(buy_fee_from_quote_in(&wei), Usdc::ZERO, "1% of one wei is zero, floored");
+    assert_eq!(buy_fee_from_quote_in(&wei), Usdc::ZERO, "0.8% of one wei is zero, floored");
     assert_eq!(sell_fee_from_quote_out(&wei), Usdc::ZERO);
+    // 124 wei is the last gross whose fee floors to zero; 125 wei pays one.
+    assert_eq!(buy_fee_from_quote_in(&Usdc::from_wad(U256::from(124))), Usdc::ZERO);
+    assert_eq!(buy_fee_from_quote_in(&Usdc::from_wad(U256::from(125))), wei);
 }
 
 // ------------------------------------------------------------------ refusals
@@ -468,21 +503,22 @@ fn a_zero_router_on_a_migrator_means_nobody_is_auto_approved() {
 #[test]
 fn a_sells_usdc_is_recoverable_from_the_fee_the_hook_logged() {
     // `ArcNowFeeHook.HookFeeTaken` carries feeWad and nothing else about the
-    // swap, and on a sell the hook took it as floor(gross / 100). So from the
-    // fee alone the net is about feeWad * 99 -- an estimate, which `Pool::sell`
-    // does not report: it reads the PoolManager's Swap log instead.
-    assert_eq!(sell_quote_out_from_fee(&Usdc::from_whole(1)), Usdc::from_whole(99));
+    // swap, and on a sell the hook took it as floor(gross * 80 / 10000). So from
+    // the fee alone the net is about feeWad * 9920 / 80 = feeWad * 124 -- an
+    // estimate, which `Pool::sell` does not report: it reads the PoolManager's
+    // Swap log instead.
+    assert_eq!(sell_quote_out_from_fee(&Usdc::from_whole(1)), Usdc::from_whole(124));
     assert_eq!(sell_quote_out_from_fee(&Usdc::ZERO), Usdc::ZERO);
 }
 
 #[test]
 fn the_derivation_round_trips_against_the_fee_identity() {
     // gross -> fee -> net has to come back to the net the fee identity names,
-    // for every gross that is a whole multiple of 100 wei — which is every gross
-    // where the flooring throws nothing away.
-    for gross_wei in [100_u64, 1_000, 10_000, 999_900, 1_000_000] {
+    // for every gross that is a whole multiple of 125 wei (80 / 10000 = 1 / 125)
+    // — which is every gross where the flooring throws nothing away.
+    for gross_wei in [125_u64, 1_000, 10_000, 999_875, 1_000_000] {
         let gross = Usdc::from_wad(U256::from(gross_wei));
-        let fee = Usdc::from_wad(U256::from(gross_wei / 100));
+        let fee = Usdc::from_wad(U256::from(gross_wei / 125));
         assert_eq!(
             sell_quote_out_from_fee(&fee),
             gross.sub_saturating(&fee).unwrap(),
@@ -492,19 +528,19 @@ fn the_derivation_round_trips_against_the_fee_identity() {
 }
 
 #[test]
-fn the_derivation_is_never_above_the_truth_and_never_99_wei_below_it() {
+fn the_derivation_is_never_above_the_truth_and_never_124_wei_below_it() {
     // The bound the doc comment claims, checked across every remainder. The
-    // hook floors, so the last two digits of the gross are gone; what matters is
-    // that what comes back is never optimistic.
-    for gross_wei in 10_000_u64..10_200 {
-        let fee = gross_wei / 100;
+    // hook floors, so up to 124 wei of the gross are gone; what matters is that
+    // what comes back is never optimistic.
+    for gross_wei in 10_000_u64..10_250 {
+        let fee = gross_wei * 80 / 10_000;
         let true_net = gross_wei - fee;
         let derived = sell_quote_out_from_fee(&Usdc::from_wad(U256::from(fee))).to_wad();
         let true_net = U256::from(true_net);
         assert!(derived <= true_net, "gross {gross_wei}: {derived} must not overstate {true_net}");
         assert!(
-            true_net - derived <= U256::from(99),
-            "gross {gross_wei}: {derived} is more than 99 wei below {true_net}"
+            true_net - derived <= U256::from(124),
+            "gross {gross_wei}: {derived} is more than 124 wei below {true_net}"
         );
     }
 }
@@ -566,18 +602,18 @@ fn a_pool_key_names_its_quote_relative_to_the_token() {
 #[test]
 fn fees_on_a_six_decimal_quote_are_computed_on_raw_units_as_the_hook_does() {
     let parse = |text: &str| QuoteAmount::parse_in(&eurc(), text).unwrap();
-    // 1.000099 EURC is 1,000,099 raw; 1% floored is 10,000 raw = 0.01 EURC.
-    // The same arithmetic on the wad would claim 0.01000099, which is not an
+    // 1.000099 EURC is 1,000,099 raw; 0.8% floored is 8,000 raw = 0.008 EURC.
+    // The same arithmetic on the wad would claim 0.008000792, which is not an
     // amount the hook can have taken.
     let fee = buy_fee_from_quote_in(&parse("1.000099"));
-    assert_eq!(fee, parse("0.01"));
+    assert_eq!(fee, parse("0.008"));
     assert_eq!(fee.token(), &eurc());
-    // A sell: 0.99 EURC net is 1.00 gross and a 0.01 fee.
-    assert_eq!(sell_gross_from_quote_out(&parse("0.99")), parse("1"));
-    assert_eq!(sell_fee_from_quote_out(&parse("0.99")), parse("0.01"));
-    assert_eq!(sell_quote_out_from_fee(&parse("0.01")), parse("0.99"));
+    // A sell: 0.992 EURC net is 1.00 gross and a 0.008 fee.
+    assert_eq!(sell_gross_from_quote_out(&parse("0.992")), parse("1"));
+    assert_eq!(sell_fee_from_quote_out(&parse("0.992")), parse("0.008"));
+    assert_eq!(sell_quote_out_from_fee(&parse("0.008")), parse("0.992"));
     // Every figure stays a whole number of raw units.
     assert!(sell_gross_from_quote_out(&parse("0.123457")).is_representable());
     // And natively nothing changes: one wei is the raw unit.
-    assert_eq!(buy_fee_from_quote_in(&Usdc::from_whole(100)), Usdc::from_whole(1));
+    assert_eq!(buy_fee_from_quote_in(&Usdc::from_whole(100)), Usdc::parse("0.8").unwrap());
 }

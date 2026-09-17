@@ -1,14 +1,18 @@
 //! Launching a token: what it costs, where it will land, and doing it.
 //!
 //! One transaction deploys a token, deploys its bonding curve bound to it, takes
-//! the flat launch fee and performs the creator's optional initial buy. There is
-//! no window in which a token exists without its curve, and none in which
-//! somebody can front-run the creator's first buy.
+//! the launch fee — **zero on arcnow.io's deployments: launching is free** —
+//! and performs the creator's optional initial buy. There is no window in which
+//! a token exists without its curve, and none in which somebody can front-run
+//! the creator's first buy.
 //!
-//! # Two charges, not one
+//! # Two charges, not one — and the first is zero
 //!
 //! **The initial buy is an ordinary buy** and pays the ordinary 1% trade fee, on
-//! top of the flat launch fee. There is no fee-free entry into the curve, and
+//! top of the launch fee. The launch fee is the quote registry's per quote, its
+//! admin can set one, and arcnow.io's registries charge 0 for native USDC and
+//! for EURC on both networks; this crate reads it rather than assuming it.
+//! There is no fee-free entry into the curve, and
 //! that is deliberate: a second, cheaper pricing path is both a code path that
 //! can disagree with the quote a user was shown and a route a creator could push
 //! volume through. [`Launchpad::quote_launch`] reports the two charges
@@ -19,8 +23,8 @@
 //! A token is launched **in a quote token** — native USDC or an allowlisted
 //! ERC-20 — and its curve is priced in that quote for life. The quote is
 //! [`LaunchParams::initial_buy`]'s token; a launch with no initial buy says
-//! which quote with `QuoteAmount::zero_in(&quote)`. The flat launch fee is
-//! charged in the same quote, at the registry's fee for it.
+//! which quote with `QuoteAmount::zero_in(&quote)`. The launch fee, if the
+//! registry charges one, is in the same quote.
 //!
 //! # Exact payment
 //!
@@ -110,8 +114,9 @@ pub struct LaunchParams {
     /// and the launch fee is charged in it. A launch in EURC with no initial buy
     /// is `QuoteAmount::zero_in(&eurc)`.
     ///
-    /// **An ordinary buy**: it pays the 1% trade fee on top of the flat launch
-    /// fee, and it fills along the curve exactly as anyone else's buy would.
+    /// **An ordinary buy**: it pays the 1% trade fee on top of the launch fee
+    /// (zero, on arcnow.io's deployments), and it fills along the curve exactly
+    /// as anyone else's buy would.
     pub initial_buy: QuoteAmount,
     /// Slippage floor for the initial buy.
     ///
@@ -296,11 +301,12 @@ impl LaunchParams {
 pub struct LaunchQuote {
     /// The quote the launch is in: the initial buy's token.
     pub quote_token: QuoteTokenInfo,
-    /// The flat launch fee, in the quote, as the registry charges it now.
+    /// The launch fee, in the quote, as the registry charges it now (zero on
+    /// arcnow.io's deployments).
     pub launch_fee: QuoteAmount,
     /// The initial buy, as asked.
     pub initial_buy: QuoteAmount,
-    /// What the launch costs in the quote: the flat fee plus the initial buy.
+    /// What the launch costs in the quote: the launch fee plus the initial buy.
     pub total_cost: QuoteAmount,
     /// The **exact** `msg.value` the launch requires: `total_cost` for a
     /// native launch, zero for an ERC-20 launch, whose cost is pulled instead.
@@ -311,8 +317,8 @@ pub struct LaunchQuote {
     pub native_value: Usdc,
     /// Tokens the initial buy would deliver. Zero if there is no initial buy.
     pub tokens_out: Tokens,
-    /// The 1% trade fee the initial buy would pay, **on top of** the flat launch
-    /// fee, and already included in `total_cost`.
+    /// The 1% trade fee the initial buy would pay, **on top of** the launch fee,
+    /// and already included in `total_cost`.
     ///
     /// Reported separately so an interface can name both charges rather than
     /// showing one number a user cannot reconcile.
@@ -427,8 +433,9 @@ impl<'a> Launchpad<'a> {
         curve_math::check_launchpad_version(&version)
     }
 
-    /// The flat launch fee in `quote` ([`crate::NATIVE_QUOTE`] for native
-    /// USDC): `QuoteRegistry.quoteInfo(quote).launchFeeWad`.
+    /// The launch fee in `quote` ([`crate::NATIVE_QUOTE`] for native USDC):
+    /// `QuoteRegistry.quoteInfo(quote).launchFeeWad`. Zero for every quote
+    /// arcnow.io's registries list today.
     ///
     /// Admin-mutable, so read from the chain rather than assumed.
     ///
@@ -470,7 +477,7 @@ impl<'a> Launchpad<'a> {
     /// The trade fee, in basis points **of a trade**: 100, one percent.
     ///
     /// Immutable, and **the same for every platform**. What a platform chooses is
-    /// how the 1% is divided across five recipients, never how large it is.
+    /// how the 1% is divided across four recipients, never how large it is.
     ///
     /// # Errors
     /// [`Error::Rpc`] if the endpoint fails, or [`Error::ImplausibleBps`] if the
@@ -487,8 +494,9 @@ impl<'a> Launchpad<'a> {
 
     /// Where the flat launch fee is sent. Immutable.
     ///
-    /// **Only the launch fee.** Trade fees never touch this address: they are
-    /// split five ways by each curve, to recipients that curve snapshotted from
+    /// **Only the launch fee** — which is zero on arcnow.io's deployments, so
+    /// nothing reaches it today. Trade fees never touch this address: they are
+    /// split four ways by each curve, to recipients that curve snapshotted from
     /// its platform.
     ///
     /// # Errors

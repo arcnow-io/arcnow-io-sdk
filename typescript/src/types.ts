@@ -422,8 +422,6 @@ export interface BuyRequest {
    * that share to the platform.
    */
   readonly referrer?: Address | undefined;
-  /** An integrating developer to credit out of the fee. Same rules as the referrer. */
-  readonly developer?: Address | undefined;
   /**
    * An explicit gas limit for this transaction, instead of letting the node
    * estimate one.
@@ -469,8 +467,6 @@ export interface SellRequest {
   readonly deadline: Deadline;
   /** A referrer to credit out of the fee. */
   readonly referrer?: Address | undefined;
-  /** An integrating developer to credit out of the fee. */
-  readonly developer?: Address | undefined;
 }
 
 /** What a buy actually did, read back out of its own logs. */

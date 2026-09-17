@@ -62,7 +62,9 @@
 //! target. [`Trade`] is the front door that reads which venue a token is at and
 //! dispatches, and [`Pool`] is the venue itself: the `PoolKey`, quotes by
 //! simulating the real swap, the router approval, and a clear refusal while the
-//! network names no router or names one bound to a different `PoolManager`.
+//! network names no router or names one bound to a different `PoolManager`. A
+//! migrated trade still costs 1.00%, as the hook's 0.80% plus a 0.20% LP fee;
+//! see [`pool`].
 //!
 //! # What is pinned, and where it came from
 //!
@@ -80,7 +82,7 @@
 //!   problem.
 //! * [`quote`] — quote tokens: the allowance an ERC-20 quote needs, and the
 //!   on-chain allowlist of them.
-//! * [`network`] — presets, custom deployments, and the deliberate mainnet gap.
+//! * [`network`] — the Arc testnet and Arc mainnet presets, and custom deployments.
 //! * [`client`] — connecting, with or without a signer.
 //! * [`launchpad`] — quoting and performing a launch.
 //! * [`curve`] — state, quotes, buying, selling, graduation.
@@ -153,15 +155,17 @@ pub use launchpad::{
 pub use migrator_registry::{MigratorInfo, MigratorRegistry, TaxMode};
 pub use network::{ContractAddresses, Network, NetworkConfig, V4Addresses, Venues};
 pub use platform::{
-    FeeConfig, FeeSplit, NewPlatform, PlatformConfigHandle, PlatformRegistry, platform_share_bps,
+    FeeConfig, FeeShare, FeeSplit, NewPlatform, PlatformConfigHandle, PlatformRegistry,
+    platform_share_bps,
 };
 pub use pool::{
-    ARC_TOKEN_ALLOWANCE_SLOT, POOL_TRADE_FEE_BPS, Pool, PoolBuyQuote, PoolBuyRequest, PoolKey,
-    PoolSellQuote, PoolSellRequest, PoolTradeResult, Trade, TradeBuyQuote, TradeBuyRequest,
-    TradeBuyResult, TradeSellQuote, TradeSellRequest, TradeSellResult, Venue,
-    arc_token_allowance_slot, buy_fee_from_quote_in, erc20_allowance_slot, pool_currencies,
-    quote_and_token_legs, quote_is_currency0, sell_fee_from_quote_out, sell_gross_from_quote_out,
-    sell_quote_out_from_fee, unpack_balance_delta, zero_for_one,
+    ARC_TOKEN_ALLOWANCE_SLOT, POOL_CREATOR_SHARE_BPS, POOL_LP_FEE_PIPS, POOL_PLATFORM_SHARE_BPS,
+    POOL_PROTOCOL_SHARE_BPS, POOL_TICK_SPACING, POOL_TOTAL_FEE_BPS, POOL_TRADE_FEE_BPS, Pool,
+    PoolBuyQuote, PoolBuyRequest, PoolKey, PoolSellQuote, PoolSellRequest, PoolTradeResult, Trade,
+    TradeBuyQuote, TradeBuyRequest, TradeBuyResult, TradeSellQuote, TradeSellRequest,
+    TradeSellResult, Venue, arc_token_allowance_slot, buy_fee_from_quote_in, erc20_allowance_slot,
+    pool_currencies, quote_and_token_legs, quote_is_currency0, sell_fee_from_quote_out,
+    sell_gross_from_quote_out, sell_quote_out_from_fee, unpack_balance_delta, zero_for_one,
 };
 pub use quote::{
     EnsureAllowance, POOL_QUOTE_TRANSFER_GAS_HEADROOM_MIN, QUOTE_TRANSFER_GAS_HEADROOM_BPS,

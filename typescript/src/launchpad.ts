@@ -150,8 +150,10 @@ export class Launchpad {
 
   /**
    * The flat fee to launch a token in `quote` (native USDC when omitted), in that
-   * quote, as the quote registry records it **now**. The protocol admin may change
-   * it; a launch caps what it pays with `LaunchParams.maxLaunchFee`.
+   * quote, as the quote registry records it **now**. **Zero on both Arc networks
+   * for every quote arcnow.io registers: launching is free.** The protocol admin
+   * may change it, which is why it is read rather than assumed; a launch caps
+   * what it pays with `LaunchParams.maxLaunchFee`.
    *
    * **Not the only charge.** The creator's initial buy is an ordinary buy and
    * pays the 1% trade fee on top of this. {@link Launchpad.quoteLaunch} reports

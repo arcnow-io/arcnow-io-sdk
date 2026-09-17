@@ -33,7 +33,7 @@ const ELSEWHERE: Address = "0x00000000000000000000000000000000000e15e0";
 const ROUTER: Address = "0x139166ee61bb560ff34f05ae4a2b666ad98b9b2e";
 
 /** arcnow.io's live v4 migrator on Arc testnet's multi-quote stack, bound to OURS. */
-const LIVE_V4: Address = "0xff0df62faec3767393b053ec37a238e7a9df0219";
+const LIVE_V4: Address = "0x6bcfb74330a091ea5b06b4111ea5b572da0186b2";
 /** A hypothetical v4 migrator bound to a manager the router does not serve. */
 const STRANDED_V4: Address = "0x0000000000000000000000000000000000000044";
 /** An escrow migrator: no poolManager(), no VERSION() either. */
@@ -75,7 +75,7 @@ const FIXTURE: Fixture = {
 };
 
 /** The registry's real address on arc-testnet, from networks.json. */
-const REGISTRY = "0x799f5e4f00193f9ae4aa73535c455898269f48a8";
+const REGISTRY = "0x14300072ae1873d1163fb6e9f42485d3555b87f2";
 
 /**
  * A revert shaped the way a node phrases one.

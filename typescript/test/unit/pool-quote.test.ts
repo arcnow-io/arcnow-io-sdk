@@ -81,8 +81,8 @@ function pool(
   ): EmittedLog[] => {
     const inputIsQuote = (zeroForOne ? key.currency0 : key.currency1) === quote;
     const out = inputIsQuote ? TOKENS_OUT : quoteOut;
-    // The hook's 1% on the quote leg, in raw units, outside the pool's own leg.
-    const fee = inputIsQuote ? amountIn / 100n : (out * 100n) / 9_900n;
+    // The hook's 0.80% on the quote leg, in raw units, outside the pool's own leg.
+    const fee = inputIsQuote ? (amountIn * 80n) / 10_000n : (out * 80n) / 9_920n;
     const poolIn = inputIsQuote ? -(amountIn - fee) : -amountIn;
     const poolOut = inputIsQuote ? out : out + fee;
     const [amount0, amount1] = zeroForOne ? [poolIn, poolOut] : [poolOut, poolIn];
@@ -95,7 +95,7 @@ function pool(
       { address: MANAGER, abi: poolManagerSwapEventAbi, eventName: "Swap",
         args: {
           id: POOL_ID, sender: ROUTER, amount0, amount1,
-          sqrtPriceX96: 1n << 96n, liquidity: 1n, tick: 0, fee: 3000,
+          sqrtPriceX96: 1n << 96n, liquidity: 1n, tick: 0, fee: 2000,
         } },
       inputIsQuote
         ? {
@@ -123,7 +123,7 @@ function pool(
       label: "migrator",
       abi: uniswapV4MigratorAbi,
       reads: {
-        poolKey: () => ({ currency0, currency1, fee: 3000, tickSpacing: 60, hooks: HOOK }),
+        poolKey: () => ({ currency0, currency1, fee: 2000, tickSpacing: 60, hooks: HOOK }),
         poolIdOf: () => POOL_ID,
         poolManager: () => MANAGER,
         VERSION: () => options.migratorVersion ?? "arcnow/uniswap-v4-migrator@2.0.0",
@@ -151,7 +151,7 @@ function pool(
       label: "hook",
       abi: arcNowFeeHookAbi,
       reads: {
-        VERSION: () => options.hookVersion ?? "arcnow/arc-now-fee-hook@3.0.0",
+        VERSION: () => options.hookVersion ?? "arcnow/arc-now-fee-hook@4.0.0",
         accruedFee: () => 12_345n,
       },
     },
@@ -212,7 +212,7 @@ describe.each([
     const quote = await client.pool(token).quoteBuy(QuoteAmount.parse(EURC, "1"));
     expect(quote.quoteIn.format()).toBe("1 EURC");
     expect(quote.tokensOut.eq(Tokens.fromWad(TOKENS_OUT))).toBe(true);
-    expect(quote.feeQuote.format()).toBe("0.01 EURC");
+    expect(quote.feeQuote.format()).toBe("0.008 EURC");
   });
 
   it("quotes a sell, reading the quote leg out of the right half of the delta", async () => {
@@ -237,7 +237,7 @@ describe.each([
     expect(key.currency0 === EURC.address).toBe(quoteIsCurrency0);
     expect(chain.sent[1]?.value).toBe(0n);
     expect(result.quote.format()).toBe("1 EURC");
-    expect(result.feeQuote.format()).toBe("0.01 EURC");
+    expect(result.feeQuote.format()).toBe("0.008 EURC");
     expect(result.tokens.eq(Tokens.fromWad(TOKENS_OUT))).toBe(true);
     expect(result.approvalTxHash).toBe(chain.sent[0]?.hash);
   });
@@ -308,7 +308,7 @@ describe("refusals before anything is sent", () => {
     expect(chain.sent).toEqual([]);
   });
 
-  it("refuses a fee hook that is not arcnow/arc-now-fee-hook@3.x.x", async () => {
+  it("refuses a fee hook that is not arcnow/arc-now-fee-hook@4.x.x", async () => {
     const { chain, client } = pool(QUOTE_FIRST, EURC.address, { hookVersion: "arcnow/arc-now-fee-hook@2.0.0" });
     const refused = await refusal(() => client.pool(QUOTE_FIRST).accruedHookFee());
     expect(refused.code).toBe("UnknownHookVersion");
@@ -373,7 +373,7 @@ describe("a fill read out of its receipt, in raw units of the quote", () => {
     address: MANAGER, abi: poolManagerSwapEventAbi, eventName: "Swap",
     args: {
       id: POOL_ID, sender: ROUTER, amount0, amount1,
-      sqrtPriceX96: 1n, liquidity: 1n, tick: 0, fee: 3000,
+      sqrtPriceX96: 1n, liquidity: 1n, tick: 0, fee: 2000,
     },
   });
   const fee = (amount: bigint, currency: Address) => toLog({
@@ -385,22 +385,22 @@ describe("a fill read out of its receipt, in raw units of the quote", () => {
   });
 
   it("takes the quote leg from amount0 when the quote is currency0, and scales it to WAD", () => {
-    const fill = quoteFillFromLogs([fee(10_000n, EURC.address), swap(-990_000n, 5n * WAD)], where("buy", true));
+    const fill = quoteFillFromLogs([fee(8_000n, EURC.address), swap(-992_000n, 5n * WAD)], where("buy", true));
     expect(fill.quote.format()).toBe("1 EURC");
-    expect(fill.feeQuote.toRaw()).toBe(10_000n);
+    expect(fill.feeQuote.toRaw()).toBe(8_000n);
   });
 
   it("takes it from amount1 when the token is currency0", () => {
-    const fill = quoteFillFromLogs([fee(10_000n, EURC.address), swap(5n * WAD, -990_000n)], where("buy", false));
+    const fill = quoteFillFromLogs([fee(8_000n, EURC.address), swap(5n * WAD, -992_000n)], where("buy", false));
     expect(fill.quote.format()).toBe("1 EURC");
   });
 
   it("counts only the hook fee taken in the pool's quote currency", () => {
     const fill = quoteFillFromLogs(
-      [fee(10_000n, EURC.address), fee(777n, NATIVE_QUOTE), swap(-990_000n, 5n * WAD)],
+      [fee(8_000n, EURC.address), fee(777n, NATIVE_QUOTE), swap(-992_000n, 5n * WAD)],
       where("buy", true),
     );
-    expect(fill.feeQuote.toRaw()).toBe(10_000n);
+    expect(fill.feeQuote.toRaw()).toBe(8_000n);
   });
 
   it("refuses a quote leg whose sign contradicts the side, in either order", () => {
@@ -409,15 +409,16 @@ describe("a fill read out of its receipt, in raw units of the quote", () => {
   });
 });
 
-describe("the 1%, on raw units the way the hook computes it", () => {
-  it("floors a buy's fee in raw units, so dust below 100 raw units is fee-free", () => {
-    expect(buyFeeFromQuoteIn(QuoteAmount.parse(EURC, "1")).toRaw()).toBe(10_000n);
-    expect(buyFeeFromQuoteIn(QuoteAmount.fromRaw(EURC, 99n)).isZero()).toBe(true);
-    expect(buyFeeFromQuoteIn(Usdc.parse("100")).toString()).toBe("1");
+describe("the hook's 0.80%, on raw units the way the hook computes it", () => {
+  it("floors a buy's fee in raw units, so dust below 125 raw units is fee-free", () => {
+    expect(buyFeeFromQuoteIn(QuoteAmount.parse(EURC, "1")).toRaw()).toBe(8_000n);
+    expect(buyFeeFromQuoteIn(QuoteAmount.fromRaw(EURC, 124n)).isZero()).toBe(true);
+    expect(buyFeeFromQuoteIn(QuoteAmount.fromRaw(EURC, 125n)).toRaw()).toBe(1n);
+    expect(buyFeeFromQuoteIn(Usdc.parse("100")).toString()).toBe("0.8");
   });
 
   it("grosses a sell's payout back up in raw units", () => {
-    expect(sellFeeFromQuoteOut(QuoteAmount.parse(EURC, "99")).format()).toBe("1 EURC");
+    expect(sellFeeFromQuoteOut(QuoteAmount.parse(EURC, "99.2")).format()).toBe("0.8 EURC");
   });
 
   it("unpacks a delta whose legs are raw units of two different decimals", () => {

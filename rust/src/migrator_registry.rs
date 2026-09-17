@@ -8,7 +8,7 @@
 //!
 //! A migrator's **tax mode** and its **canonical router** are read and recorded
 //! once, at registration, and never re-read. A migrator that could change its
-//! answer could switch the 1% on every future trade of an already-launched token
+//! answer could switch the fee on every future trade of an already-launched token
 //! on or off; one that could revert would brick every launch that named it. A
 //! venue whose mode changed is a different contract, and re-registering the same
 //! address is refused permanently.
@@ -28,7 +28,7 @@ use crate::bindings::migrator_registry::MigratorRegistry as Abi;
 use crate::client::Client;
 use crate::error::Error;
 
-/// Where, if anywhere, the 1% is taken once a token has migrated.
+/// Where, if anywhere, arcnow.io's fee is taken once a token has migrated.
 ///
 /// Recorded at registration, snapshotted onto each curve at launch, and written
 /// onto the token at migration.
@@ -40,9 +40,11 @@ pub enum TaxMode {
     /// a swap, and a fee collected by a router of our own would be skipped by
     /// anyone calling the pool directly.
     None,
-    /// **A v4 hook takes the 1% in USDC inside the swap** and splits it the same
-    /// five ways the curve does. This is Uniswap v4, and it is the only mode
-    /// under which a platform earns anything after graduation.
+    /// **A v4 hook takes the pool's own 0.80% in the quote inside the swap** and
+    /// splits it three ways — creator, platform, protocol — on the pool's own
+    /// split; with Uniswap's 0.20% LP fee the trade costs the same 1.00% the
+    /// curve charged. This is Uniswap v4, and it is the only mode under which a
+    /// platform earns anything after graduation.
     ///
     /// The fee is taken in USDC and never in the token, which is what lets the
     /// token stay a plain ERC-20 that any router can handle — and therefore what

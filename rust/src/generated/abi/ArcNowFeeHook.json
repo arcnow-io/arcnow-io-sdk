@@ -955,11 +955,6 @@
             "internalType": "uint256"
           },
           {
-            "name": "devShareBps",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
             "name": "protocolShareBps",
             "type": "uint256",
             "internalType": "uint256"
@@ -1138,11 +1133,6 @@
             "internalType": "address"
           },
           {
-            "name": "dev",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
             "name": "protocol",
             "type": "address",
             "internalType": "address"
@@ -1159,11 +1149,6 @@
           },
           {
             "name": "refWad",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "devWad",
             "type": "uint256",
             "internalType": "uint256"
           },

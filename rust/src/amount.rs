@@ -1030,8 +1030,9 @@ impl FromStr for UsdcErc20 {
 ///
 /// So the constructors are named for what the number is a share *of*:
 ///
-/// * [`Bps::of_fee`] — a slice of the 1% trade fee. Creator, platform, ref, dev
-///   and protocol shares are all of these, and the five total exactly 10000.
+/// * [`Bps::of_fee`] — a slice of the fee. Creator, platform, ref and protocol
+///   shares are all of these, and the four total exactly 10000 — of the curve's
+///   1% or of the hook's 0.80%, whichever fee the split belongs to.
 /// * [`Bps::of_trade`] — a slice of the trade itself. There is exactly one of
 ///   these in the whole system: the trade fee, 100 bps, 1%.
 ///

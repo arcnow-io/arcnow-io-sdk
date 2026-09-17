@@ -204,8 +204,7 @@ impl Client {
     ///
     /// # Errors
     ///
-    /// [`Error::NetworkNotDeployed`] for `arc-mainnet`, and anything
-    /// [`ClientBuilder::build`] can return.
+    /// Anything [`ClientBuilder::build`] can return.
     pub async fn connect(network: Network) -> Result<Self, Error> {
         ClientBuilder::default().network(network).build().await
     }
@@ -479,9 +478,9 @@ impl ClientBuilder {
     ///
     /// # Errors
     ///
-    /// * [`Error::NetworkNotDeployed`] when a **preset** network has nothing
-    ///   deployed on it, naming every missing contract. This is what
-    ///   `arc-mainnet` answers, and it is the point of that preset existing.
+    /// * [`Error::NetworkNotDeployed`] when the network has one of the core
+    ///   contracts missing, naming every gap. Both presets are fully deployed,
+    ///   so this is a [`Network::Custom`] configuration's answer.
     /// * [`Error::Rpc`] when no endpoint was given, or the URL will not parse,
     ///   or the endpoint cannot be reached.
     /// * [`Error::ChainIdMismatch`] when the endpoint is on a different chain

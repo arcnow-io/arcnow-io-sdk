@@ -1,5 +1,6 @@
 /**
- * Network presets, and the deliberate hole where Arc mainnet will go.
+ * Network presets: Arc testnet and Arc mainnet, both live and both running the
+ * same fee-model build at different addresses.
  *
  * The addresses come from `src/generated/networks.json`, which is a copy of the
  * repository-root `networks.json`, projected in and hash-checked by the
@@ -24,7 +25,7 @@ import { ArcNowError } from "./errors/error.js";
 import networksJson from "./generated/networks.json" with { type: "json" };
 
 /**
- * The named presets. `"arc-mainnet"` resolves and then refuses; see
+ * The named presets. Both resolve to a live deployment; see
  * {@link resolveNetwork}.
  */
 export type Network = "arc-testnet" | "arc-mainnet";
@@ -39,12 +40,12 @@ export const NETWORKS: readonly Network[] = ["arc-testnet", "arc-mainnet"];
  * `launchpad`, `tokenFactory`, `curveFactory`, `migratorRegistry`,
  * `platformRegistry`.
  *
- * The rest may legitimately be absent on a perfectly healthy chain. Arc testnet
- * has no `escrowMigrator` — and that is the *better* state, because escrow is
- * the one custodial contract in the system and `arcnow-io/contracts` deploys it
- * only where no venue migrator could be built. It has no v2 or v3 migrator
- * either, because both need a wrapped-native token Arc testnet does not
- * publish.
+ * The rest may legitimately be absent on a perfectly healthy chain. Neither Arc
+ * network has an `escrowMigrator` — and that is the *better* state, because
+ * escrow is the one custodial contract in the system and `arcnow-io/contracts`
+ * deploys it only where no venue migrator could be built. Neither has a v2 or
+ * v3 migrator either, because both need a wrapped-native token Arc does not
+ * publish: both chains are v4-only.
  */
 export interface ContractAddresses {
   /** The one orchestrator: takes the launch fee, deploys token and curve, does the first buy. */
@@ -59,8 +60,9 @@ export interface ContractAddresses {
   readonly platformRegistry: Address;
   /**
    * The quote registry: which quote tokens a launch may use, and each one's
-   * launch fee. **Absent until the multi-quote stack is deployed**; when absent
-   * the SDK asks the launchpad (`quoteTokenRegistry()`, immutable) instead.
+   * launch fee (zero for every quote arcnow.io registers). Both presets name it;
+   * when a custom network leaves it out the SDK asks the launchpad
+   * (`quoteTokenRegistry()`, immutable) instead.
    */
   readonly quoteRegistry?: Address | undefined;
   /**
@@ -78,9 +80,13 @@ export interface ContractAddresses {
   readonly v2Migrator?: Address | undefined;
   /** Uniswap v3 graduation target, if the chain has a wrapped-native token. */
   readonly v3Migrator?: Address | undefined;
-  /** Uniswap v4 graduation target. The one Arc testnet has. */
+  /** Uniswap v4 graduation target. The one both Arc networks have. */
   readonly v4Migrator?: Address | undefined;
-  /** The v4 hook that charges the same 1%, in native USDC, inside a graduated pool's swaps. */
+  /**
+   * The v4 hook that charges the pool's own 0.80% ({@link POOL_TRADE_FEE_BPS}),
+   * in the pool's quote, inside a graduated pool's swaps — beside the pool's
+   * 0.20% LP fee, so a migrated trade costs the curve's 1.00% in all.
+   */
   readonly feeHook?: Address | undefined;
   /**
    * The Uniswap v4 router every post-graduation quote and trade goes through.
@@ -90,10 +96,12 @@ export interface ContractAddresses {
    * It is `UniswapV4Router04` from z0r0z/v4-router at commit `f5d5bfc2`,
    * unmodified, deployed by arcnow-io/contracts `script/DeployV4Router.s.sol`
    * through Arc's deterministic CREATE2 factory with salt zero and bound to
-   * **arcnow.io's own PoolManager**, `0x06110b57…`. That makes its address
-   * predictable before it exists — `0x139166ee…` on Arc testnet — but a
-   * predictable address with no code at it is not a router, so the preset says
-   * `null` until the deployment is broadcast rather than naming it early.
+   * the chain's PoolManager (`0x06110b57…` on Arc testnet, `0x8366a39c…` on
+   * Arc mainnet). That makes its address predictable before it exists —
+   * `0x139166ee…` on testnet, `0x4a142209…` on mainnet — but a predictable
+   * address with no code at it is not a router, so a preset says `null` until
+   * the deployment is broadcast rather than naming it early. Both are
+   * broadcast.
    *
    * **Why arcnow.io deploys its own rather than using the one already on the
    * chain.** Arc testnet has a second, unrelated PoolManager with a third-party
@@ -167,18 +175,27 @@ export interface V4Deployment {
    * mistake it exists to catch.
    */
   readonly poolManager: Address;
+  /**
+   * The LP fee the migrator bakes into every pool key it opens, in hundredths
+   * of a bip: `2000` is 0.20%. Descriptive; the key itself is read off the
+   * migrator. See {@link POOL_LP_FEE_PIPS}.
+   */
+  readonly lpFee?: number | undefined;
+  /** The tick spacing of every pool the migrator opens: `60`. See {@link POOL_TICK_SPACING}. */
+  readonly tickSpacing?: number | undefined;
 }
 
 /** A resolved, usable deployment. */
 export interface NetworkConfig {
   /** The preset name, or `"custom"` for addresses a caller supplied. */
   readonly name: string;
-  /** EVM chain id. Arc testnet is `5042002`. */
+  /** EVM chain id. Arc testnet is `5042002`, Arc mainnet `5042`. */
   readonly chainId: number;
   /** A JSON-RPC endpoint. Reading needs no key; writing needs a signer, not a different URL. */
   readonly rpcUrl: string;
   /**
-   * A block explorer, when there is one to name.
+   * A block explorer, when there is one to name: `https://explorer.arc.io` on
+   * Arc mainnet.
    *
    * `undefined` for Arc testnet, deliberately: nothing in `arcnow-io/contracts`
    * or `arcnow-io/deployment` names an explorer for it, and a wrong link in an
@@ -197,12 +214,12 @@ export interface NetworkConfig {
   readonly venues: VenueFlags;
   /**
    * The Uniswap v4 deployment a graduated token trades in, when the chain has
-   * one. `undefined` where it does not — which is every chain arcnow.io is not
-   * on yet.
+   * one. Both presets do; a custom network may leave it out.
    */
   readonly v4?: V4Deployment | undefined;
   /**
-   * The `arcnow-io/contracts` commit the addresses were deployed from.
+   * The `arcnow-io/contracts` commit whose deployment record carries these
+   * addresses.
    *
    * The same commit `pins.json` pins the ABIs to. If these two ever diverge, an
    * encoded call succeeds against a selector that does something else — which
@@ -287,6 +304,8 @@ interface RawNetwork {
   venues: Record<string, boolean>;
   v4?: {
     poolManager?: string | null;
+    lpFee?: number | null;
+    tickSpacing?: number | null;
   };
 }
 
@@ -295,8 +314,8 @@ const RAW = (networksJson as unknown as { networks: Record<string, RawNetwork> }
 /**
  * The raw preset entry, `null` addresses and all.
  *
- * Exposed so a caller can *see* that `"arc-mainnet"` exists and is empty rather
- * than having to infer it from a thrown error.
+ * Exposed so a caller can read a preset exactly as `networks.json` states it,
+ * before it is normalised.
  */
 export function rawNetwork(network: Network): RawNetwork {
   const entry = RAW[network];
@@ -322,14 +341,14 @@ function normaliseAddress(value: string | null): Address | undefined {
  * Resolve a preset, a custom deployment or an already-resolved config into
  * something a client can be built on.
  *
- * **`"arc-mainnet"` resolves and then refuses.** The preset is present,
- * complete in shape and null in every address, on purpose. A preset that was
- * absent would get a caller a "no such network" error they read as "the SDK is
- * behind" and work around by pasting addresses from somewhere; a preset with
- * plausible addresses in it would get them a transaction to an account that
- * does not exist. What they get instead is
- * {@link ArcNowError} with code `NetworkNotDeployed`, naming every missing
- * contract and saying to pass addresses explicitly.
+ * **Both presets are live.** `"arc-testnet"` and `"arc-mainnet"` each resolve
+ * to the fee-model stack deployed on that chain, as `arcnow-io/contracts`'
+ * deployment record states it. Should a preset ever be shipped with nothing
+ * deployed on it — complete in shape and null in every address, which is how a
+ * chain arcnow.io has not reached is described — it resolves and then refuses
+ * with {@link ArcNowError} code `NetworkNotDeployed`, naming every missing
+ * contract, rather than inventing an address or hiding behind "no such
+ * network".
  *
  * @throws {ArcNowError} `UnknownNetwork` for a name that is not a preset.
  * @throws {ArcNowError} `NetworkNotDeployed` for a preset with nothing deployed on it.
@@ -417,7 +436,11 @@ function versions(
 function readV4(entry: RawNetwork): V4Deployment | undefined {
   const poolManager = normaliseAddress(entry.v4?.poolManager ?? null);
   if (poolManager === undefined) return undefined;
-  return { poolManager };
+  return {
+    poolManager,
+    lpFee: entry.v4?.lpFee ?? undefined,
+    tickSpacing: entry.v4?.tickSpacing ?? undefined,
+  };
 }
 
 function resolveCustom(input: CustomNetwork | NetworkConfig): NetworkConfig {
@@ -467,7 +490,7 @@ function notDeployed(network: Network, missing: string[], entry: RawNetwork): Ar
       + `${named.join(", ")}`
       + (entry.chainId === null ? ", and the chain id itself" : "")
       + (entry.rpcUrl === null ? ", and an RPC endpoint" : "")
-      + ". This is not the SDK being out of date: arcnow.io is not on this chain yet, and "
+      + ". This is not the SDK being out of date: arcnow.io is not on this chain, and "
       + "the preset is deliberately null in every address rather than absent, so that you "
       + "get this sentence instead of a 'no such network' you would work around. If you "
       + "know better, pass { rpcUrl, chainId, contracts } — a custom deployment is a "

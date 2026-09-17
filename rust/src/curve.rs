@@ -71,9 +71,10 @@
 //! network-wide list** — deregistering a migrator bars the next launch and
 //! reaches nothing that already exists.
 //!
-//! After migration the same 1% is charged by `ArcNowFeeHook` inside the v4
-//! pool's swaps, in the pool's quote token. Ref and dev have no address
-//! in a pool, so both shares follow the zero rule to the platform recipient.
+//! After migration a trade still costs 1.00%, but the pool's own way:
+//! `ArcNowFeeHook` takes 0.80% inside the v4 pool's swaps, in the pool's quote
+//! token, split three ways on the pool's own split, and Uniswap's 0.20% LP fee
+//! is the rest. A pool has no referrer; see [`crate::pool`].
 
 use alloy::primitives::{Address, B256, U256};
 use alloy::providers::{DynProvider, Provider};
@@ -90,12 +91,12 @@ use crate::quote::{Batch, erc20_trade_gas, with_quote_transfer_headroom as curve
 /// Everything worth knowing about a curve right now, in one batched read.
 ///
 /// **The version comes first.** [`Curve::state`] reads the curve's `VERSION()`
-/// and refuses anything but `arcnow/bonding-curve@3.x.x` before it reads
-/// another word, so every number here is a multi-quote constant-product
+/// and refuses anything but `arcnow/bonding-curve@4.x.x` before it reads
+/// another word, so every number here is a fee-model constant-product
 /// curve's, and every amount is in [`CurveState::quote_token`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CurveState {
-    /// The curve's `VERSION()`, verbatim — `arcnow/bonding-curve@3.0.0`, say.
+    /// The curve's `VERSION()`, verbatim — `arcnow/bonding-curve@4.0.0`, say.
     pub version: String,
     /// What this curve is priced and paid in, for life. Immutable.
     pub quote_token: QuoteTokenInfo,
@@ -282,9 +283,6 @@ pub struct BuyRequest {
     /// share. Naming your own address is allowed and simply rebates that part of
     /// the fee.
     pub referrer: Option<Address>,
-    /// An integrating developer to credit out of the fee, or `None`. Same rules
-    /// as `referrer`.
-    pub developer: Option<Address>,
     /// An explicit gas limit, or `None` to let the node estimate one.
     ///
     /// **Set this on a buy that might graduate the curve, and only then.** The
@@ -319,7 +317,6 @@ impl BuyRequest {
             min_tokens_out,
             deadline: Deadline::in_minutes(5),
             referrer: None,
-            developer: None,
             gas_limit: None,
         }
     }
@@ -345,13 +342,6 @@ impl BuyRequest {
         self.referrer = Some(referrer);
         self
     }
-
-    /// Credit an integrating developer out of the fee.
-    #[must_use]
-    pub fn developer(mut self, developer: Address) -> Self {
-        self.developer = Some(developer);
-        self
-    }
 }
 
 /// A sell, spelled out.
@@ -369,8 +359,6 @@ pub struct SellRequest {
     pub deadline: Deadline,
     /// A referrer to credit out of the fee, or `None`. Same rules as on a buy.
     pub referrer: Option<Address>,
-    /// An integrating developer to credit out of the fee, or `None`.
-    pub developer: Option<Address>,
 }
 
 impl SellRequest {
@@ -378,13 +366,7 @@ impl SellRequest {
     /// live, crediting nobody.
     #[must_use]
     pub fn new(tokens_in: Tokens, min_quote_out: QuoteAmount) -> Self {
-        Self {
-            tokens_in,
-            min_quote_out,
-            deadline: Deadline::in_minutes(5),
-            referrer: None,
-            developer: None,
-        }
+        Self { tokens_in, min_quote_out, deadline: Deadline::in_minutes(5), referrer: None }
     }
 
     /// Set the deadline.
@@ -398,13 +380,6 @@ impl SellRequest {
     #[must_use]
     pub fn referrer(mut self, referrer: Address) -> Self {
         self.referrer = Some(referrer);
-        self
-    }
-
-    /// Credit an integrating developer out of the fee.
-    #[must_use]
-    pub fn developer(mut self, developer: Address) -> Self {
-        self.developer = Some(developer);
         self
     }
 }
@@ -712,7 +687,7 @@ impl<'a> Curve<'a> {
         }
     }
 
-    /// Refuse anything but a `@3.x.x` bonding curve, naming what the address is.
+    /// Refuse anything but a `@4.x.x` bonding curve, naming what the address is.
     ///
     /// Every quote and trade on this handle asks this first, so a curve this SDK
     /// does not know — a retired `@1.x.x` curve included — is refused before
@@ -852,18 +827,17 @@ impl<'a> Curve<'a> {
         })
     }
 
-    /// Split a fee exactly as a swap with these `referrer` and `developer`
-    /// addresses would.
+    /// Split a fee exactly as a swap with this `referrer` would.
     ///
-    /// The same arithmetic the swap settles with. The four proportional shares
-    /// are floored and the platform's share is the **residual**, so the five
+    /// The same arithmetic the swap settles with. The three proportional shares
+    /// are floored and the platform's share is the **residual**, so the four
     /// always total the fee exactly — at every size, including a fee of one wei,
-    /// where four shares are zero and the platform takes it all. The rounding
-    /// dust is at most four wei and it goes to the platform, which is where every
-    /// unaddressed share goes too.
+    /// where three shares are zero and the platform takes it all. The rounding
+    /// dust is at most three wei and it goes to the platform, which is where
+    /// every unaddressed share goes too.
     ///
-    /// A `None` referrer or developer resolves to the platform recipient. That is
-    /// the same rule a zero configured share follows, stated once.
+    /// A `None` referrer resolves to the platform recipient. That is the same
+    /// rule a zero configured share follows, stated once.
     ///
     /// # Errors
     /// [`Error::Rpc`] if the endpoint fails.
@@ -871,15 +845,10 @@ impl<'a> Curve<'a> {
         &self,
         fee: QuoteAmount,
         referrer: Option<Address>,
-        developer: Option<Address>,
     ) -> Result<FeeSplit, Error> {
         let split = self
             .contract()
-            .previewFeeSplit(
-                fee.to_wad(),
-                referrer.unwrap_or(Address::ZERO),
-                developer.unwrap_or(Address::ZERO),
-            )
+            .previewFeeSplit(fee.to_wad(), referrer.unwrap_or(Address::ZERO))
             .call()
             .await
             .map_err(|err| Error::from_contract(err, "previewing a fee split"))?;
@@ -887,12 +856,10 @@ impl<'a> Curve<'a> {
             creator: split.creator,
             platform: split.platform,
             referrer: split.r#ref,
-            developer: split.dev,
             protocol: split.protocol,
             creator_amount: QuoteAmount::from_wad_in(fee.token(), split.creatorWad),
             platform_amount: QuoteAmount::from_wad_in(fee.token(), split.platformWad),
             referrer_amount: QuoteAmount::from_wad_in(fee.token(), split.refWad),
-            developer_amount: QuoteAmount::from_wad_in(fee.token(), split.devWad),
             protocol_amount: QuoteAmount::from_wad_in(fee.token(), split.protocolWad),
         })
     }
@@ -933,17 +900,11 @@ impl<'a> Curve<'a> {
 
         let contract = self.contract();
         let referrer = request.referrer.unwrap_or(Address::ZERO);
-        let developer = request.developer.unwrap_or(Address::ZERO);
         let (pending, approval_tx_hash) = if quote.is_native {
-            // The four-argument overload always, with zeros where nobody was
-            // named: the two-argument one is exactly this call with both zero.
+            // The three-argument overload always, with zero where nobody was
+            // named: the two-argument one is exactly this call with zero.
             let call = contract
-                .buy_0(
-                    request.min_tokens_out.to_wad(),
-                    request.deadline.to_u256(),
-                    referrer,
-                    developer,
-                )
+                .buy_0(request.min_tokens_out.to_wad(), request.deadline.to_u256(), referrer)
                 .from(from)
                 .value(request.quote_in.to_wad());
             let call = match request.gas_limit {
@@ -965,7 +926,6 @@ impl<'a> Curve<'a> {
                     request.min_tokens_out.to_wad(),
                     request.deadline.to_u256(),
                     referrer,
-                    developer,
                 )
                 .from(from);
             let (limit, context) = (request.gas_limit, "sending a buy");
@@ -1056,7 +1016,6 @@ impl<'a> Curve<'a> {
                 request.min_tokens_out.to_wad(),
                 request.deadline.to_u256(),
                 request.referrer.unwrap_or(Address::ZERO),
-                request.developer.unwrap_or(Address::ZERO),
             )
             .from(from)
             .state(overrides)
@@ -1093,13 +1052,14 @@ impl<'a> Curve<'a> {
         let quote = self.quote_token().await?;
         quote.require_same(request.min_quote_out.token())?;
         let contract = self.contract();
+        // The four-argument overload always, with zero where nobody was named:
+        // the three-argument one is exactly this call with zero.
         let call = contract
-            .sell_0(
+            .sell_1(
                 request.tokens_in.to_wad(),
                 request.min_quote_out.to_wad(),
                 request.deadline.to_u256(),
                 request.referrer.unwrap_or(Address::ZERO),
-                request.developer.unwrap_or(Address::ZERO),
             )
             .from(from);
         // An ERC-20 payout's fee shares pass a gas guard: never the bare estimate.
@@ -1223,7 +1183,7 @@ impl<'a> Curve<'a> {
         Ok(receipt.transaction_hash)
     }
 
-    /// The five-way fee split this curve snapshotted at construction.
+    /// The four-way fee split this curve snapshotted at construction.
     ///
     /// `immutable`, and identical to the one on its token. **No admin anywhere —
     /// platform, protocol, creator — can change what a launched curve charges or
@@ -1242,7 +1202,6 @@ impl<'a> Curve<'a> {
             config.creatorShareBps,
             config.platformShareBps,
             config.refShareBps,
-            config.devShareBps,
             config.protocolShareBps,
             config.platformRecipient,
             config.protocolRecipient,

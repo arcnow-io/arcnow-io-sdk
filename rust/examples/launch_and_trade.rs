@@ -19,10 +19,11 @@
 //!
 //! # What it will cost
 //!
-//! The flat launch fee (2 USDC on the shipped deployment) plus whatever you
-//! choose to spend on the initial buy, plus gas. The program prints the exact
-//! total **before** it spends anything, and everything it does is on Arc
-//! **testnet**.
+//! The launch fee the quote registry charges — **zero** on arcnow.io's
+//! deployments; launching is free — plus whatever you choose to spend on the
+//! initial buy, plus gas. The program reads the fee off the chain rather than
+//! assuming it, prints the exact total **before** it spends anything, and
+//! everything it does is on Arc **testnet**.
 //!
 //! # Run it
 //!
@@ -109,8 +110,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let launch_fee = launchpad.launch_fee(arcnow_sdk::NATIVE_QUOTE).await?;
     let trade_fee = launchpad.trade_fee_bps().await?;
     println!(
-        "\n  the launchpad charges a flat {launch_fee} USDC to launch, and {trade_fee} on every \
-         trade\n  ({}% — and the initial buy is an ordinary buy, so it pays that too)",
+        "\n  the quote registry charges {launch_fee} USDC to launch (free, on arcnow.io's \
+         deployments), and the launchpad {trade_fee} on every trade\n  ({}% — and the initial \
+         buy is an ordinary buy, so it pays that too)",
         trade_fee.percent_string()
     );
 
@@ -130,7 +132,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let (token_address, curve_address) = launchpad.predict_addresses(me, &params).await?;
     println!("\n  THIS LAUNCH WILL COST EXACTLY {} USDC, plus gas.", quote.total_cost);
     println!(
-        "    {launch_fee} flat launch fee\n    {} initial buy, of which {} is the 1% trade fee\n  \
+        "    {launch_fee} launch fee\n    {} initial buy, of which {} is the 1% trade fee\n  \
          and it will deliver {} tokens.",
         params.initial_buy, quote.trade_fee, quote.tokens_out
     );
@@ -243,17 +245,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // ---- where the fee went ----------------------------------------------
-    let split = curve.preview_fee_split(sell_quote.fee.clone(), None, None).await?;
-    println!("\n  the {} USDC fee on that sell split five ways", sell_quote.fee);
+    let split = curve.preview_fee_split(sell_quote.fee.clone(), None).await?;
+    println!("\n  the {} USDC fee on that sell split four ways", sell_quote.fee);
     println!("  (basis points OF THE FEE, never of the trade):\n");
-    for (label, amount, recipient) in [
-        ("creator", split.creator_amount.clone(), split.creator),
-        ("platform", split.platform_amount.clone(), split.platform),
-        ("referrer", split.referrer_amount.clone(), split.referrer),
-        ("developer", split.developer_amount.clone(), split.developer),
-        ("protocol", split.protocol_amount.clone(), split.protocol),
-    ] {
-        println!("    {label:<10} {:>24}  {recipient}", amount.to_string());
+    for party in arcnow_sdk::FeeShare::ALL {
+        let (recipient, amount) = split.part(party);
+        println!("    {:<10} {:>24}  {recipient}", party.to_string(), amount.to_string());
     }
     println!(
         "    {:<10} {:>24}  (exactly the fee, at every size)",
@@ -261,10 +258,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         split.total().to_string()
     );
     println!(
-        "  no referrer and no developer were named, so both of those shares went to the \
-         platform\n  recipient — the same rule a zero configured share follows. They keep their \
-         own identity\n  in the logs all the same, so referral reporting does not quietly become \
-         platform revenue."
+        "  no referrer was named, so that share went to the platform recipient — the same \
+         rule\n  a zero configured share follows. It keeps its own identity in the logs all the \
+         same,\n  so referral reporting does not quietly become platform revenue."
     );
 
     println!("\n  balance now {} USDC", client.balance(me).await?);

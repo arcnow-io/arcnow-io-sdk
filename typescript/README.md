@@ -136,39 +136,34 @@ node reject it would spend a round trip to produce a worse message.
 
 ### One stack, one curve
 
-arcnow.io has one contract stack and one bonding curve: the multi-quote
-constant-product curve, `arcnow/bonding-curve@3.x.x`, whose fee hook
-(`arcnow/arc-now-fee-hook@3.x.x`) accrues each fee in the pool's quote currency as a
-PoolManager claim and pays it out in a later transaction. `config.contracts` is that
-stack, with the router (`contracts.v4Router`) beside it, and `config.contractVersions`
-names the build at each address.
+arcnow.io has one contract stack per chain — the same build on Arc testnet and Arc
+mainnet — and one bonding curve: the constant-product curve under the fee model,
+`arcnow/bonding-curve@4.x.x`, whose fee hook (`arcnow/arc-now-fee-hook@4.x.x`) takes
+the pool's own 0.80% in the pool's quote currency, accrues it as a PoolManager claim
+and pays it out in a later transaction. `config.contracts` is that stack, with the
+router (`contracts.v4Router`) beside it, and `config.contractVersions` names the build
+at each address.
 
 **Anything else is refused, never priced.** A curve, platform, registry or quote
-registry that answers any other `VERSION()` — the version-2 build included — is refused
-by name before anything is read, simulated or sent; see
-[Which curve is this?](#which-curve-is-this).
+registry that answers any other `VERSION()` — the retired multi-quote `@3.x.x` build,
+named as such, and the version-2 build before it — is refused by name before anything
+is read, simulated or sent; see [Which curve is this?](#which-curve-is-this).
 
-> **Arc testnet still runs the version-2 stack** until the multi-quote stack is
-> broadcast. The `arc-testnet` preset records those addresses — they must match the
-> contracts' deployment record — and this SDK refuses them. Use a custom network (below)
-> to talk to a multi-quote stack, as the fork suite does.
-
-### Networks, and the mainnet gap
+### Networks: two live presets
 
 | preset | what happens |
 | --- | --- |
-| `"arc-testnet"` | resolves to the live deployment: chain `5042002`, the addresses in `networks.json` |
-| `"arc-mainnet"` | **resolves, and then refuses**, naming every missing contract |
+| `"arc-testnet"` | resolves to the live deployment: chain `5042002`, the addresses in `networks.json`, the 1,000,000 / 50 template |
+| `"arc-mainnet"` | resolves to the live deployment: chain `5042`, `https://rpc.mainnet.arc.io`, explorer `https://explorer.arc.io`, the reference 1,000,000,000 / 50,000 template — **real money** |
 
-`"arc-mainnet"` is present in `networks.json`, complete in shape and `null` in
-every address, on purpose. A preset that was *absent* gets you a "no such
-network" you read as "the SDK is behind" and work around by pasting addresses
-from somewhere; a preset with plausible addresses in it gets you a transaction
-to an account that does not exist. What you get instead is an `ArcNowError` with
-code `NetworkNotDeployed` that says exactly what is true.
+Both run the same build at different addresses, each with native USDC and that
+chain's EURC as quotes. `client.config.explorerUrl` is set on mainnet and `undefined`
+on testnet, which names none.
 
 `null` in that file means **"not deployed on this chain"**. It is not the zero
-address, which on Arc is a real account that would send money nowhere at all.
+address, which on Arc is a real account that would send money nowhere at all. A
+preset shipped with nothing deployed on it would resolve and then refuse with
+`NetworkNotDeployed`, naming every missing contract; neither current preset does.
 
 A custom deployment is a first-class path, not a fallback:
 
@@ -213,15 +208,16 @@ state.migrator;               // where THIS token graduates to. Ask the curve.
 ### Which curve is this?
 
 ```ts
-await curve.version();   // "arcnow/bonding-curve@3.0.0"
+await curve.version();   // "arcnow/bonding-curve@4.0.0"
 await curve.quoteToken(); // the quote, read once from the curve's immutables
 await curve.params();    // { r0Wad, y0Wad }
 state.version; state.params; state.curveSupply; state.tradeFeeBps;
 ```
 
 Every quote, local price, trade and state read asks the curve's own `VERSION()`
-first. `arcnow/bonding-curve@3.x.x` is priced; **any other bonding-curve version,
-the version-2 curve included, throws `UnknownCurveVersion` naming the version**, and an
+first. `arcnow/bonding-curve@4.x.x` is priced; **any other bonding-curve version —
+the retired multi-quote `@3.x.x` by name, the version-2 curve, `@1.x.x` — throws
+`UnknownCurveVersion` naming the version**, and an
 address that is not a bonding curve at all — a token, a factory, an address with
 no code — throws `AddressIsNotACurve`, naming what it says it is. Both before
 anything is simulated. `assertCurveVersion(version)` is the rule on its own.
@@ -284,9 +280,9 @@ const params = {
 
 const quote = await client.launchpad.quoteLaunch(params);
 quote.quoteToken;  // the quote: native USDC here
-quote.launchFee;   // 2 USDC, from the quote registry, per quote
-quote.totalCost;   // 27 USDC: launch fee + initial buy, in the quote
-quote.nativeValue; // 27 USDC for native; ZERO for an ERC-20 quote, which is pulled
+quote.launchFee;   // 0 USDC: launching is free, read from the quote registry per quote
+quote.totalCost;   // 25 USDC: launch fee + initial buy, in the quote
+quote.nativeValue; // 25 USDC for native; ZERO for an ERC-20 quote, which is pulled
 quote.tradeFee;    // 0.25 USDC — the initial buy's own 1%
 quote.tokensOut;
 
@@ -307,7 +303,7 @@ Three things to know:
 - **The launch fee is per quote and the protocol admin may change it**, so every
   launch encodes `maxLaunchFeeWad` — `maxLaunchFee`, or the fee just quoted — and a
   raise while the transaction is pending reverts `LaunchFeeAboveMaximum`.
-- **The initial buy is an ordinary buy.** It pays the 1% trade fee *on top of* the
+- **The initial buy is an ordinary buy.** It pays the 1% trade fee beside the
   launch fee. `quoteLaunch` reports the two charges separately so you can name both.
 
 `client.launchpad.launchFee(quote)` reads a quote's fee off the registry;
@@ -328,8 +324,7 @@ await curve.buy({
   quoteIn: Usdc.parse("100"),                   // native: the value; ERC-20: pulled after an exact approve
   minTokensOut: minTokensOutFromQuote(q, Bps.of(50n)),
   deadline: Deadline.inMinutes(5),
-  referrer,                                      // optional; credits part of the fee
-  developer,                                     // you are already paying
+  referrer,                                      // optional; credits part of the fee you are already paying
 });
 ```
 
@@ -454,24 +449,24 @@ is the **residual**:
 import { platformShareBps, CurveTemplate, Bps } from "@arcnow/sdk";
 
 // A pure helper: see your own cut without deploying anything.
-platformShareBps(Bps.of(3000n), Bps.of(1000n), Bps.of(1000n));  // 2500 bps
+platformShareBps(Bps.of(3000n), Bps.of(1000n));  // 3500 bps
 
 await client.platforms.registerPlatform({
   admin, feeRecipient,
   creatorShareBps: Bps.of(3000n),
   refShareBps: Bps.of(1000n),
-  devShareBps: Bps.of(1000n),
   defaultMigrator,
   curve: CurveTemplate.arcnowDefaults(),
 });
 ```
 
 **`NewPlatform` has no platform-share field, and that is the point.** The
-platform's own cut is `10000 - protocol - creator - ref - dev`, computed on
-demand and never an input anywhere in the contracts. A platform allocates at
-most **7500 bps** across creator, ref and dev, and whatever it does not allocate
-is its own. This SDK checks that **client-side, before sending**, with an error
-that states the residual you are actually choosing.
+platform's own cut is `10000 - protocol - creator - ref`, computed on demand and
+never an input anywhere in the contracts. A platform allocates at most **7500
+bps** across creator and ref, and whatever it does not allocate is its own. This
+SDK checks that **client-side, before sending**, with an error that states the
+residual you are actually choosing. There is no developer-share field either:
+the fee has four parties.
 
 The 7500 is measured against the **maximum** protocol share (2500), not the
 current one — so a protocol admin lowering their cut widens every platform's
@@ -501,16 +496,26 @@ arcnow.io's own shipped split, and where the residual comes from:
 | share | bps of the fee | of a trade | who sets it |
 | --- | --- | --- | --- |
 | creator | 3000 | 0.30% | the platform |
-| platform | 2500 | 0.25% | **nobody — it is the residual** |
+| platform | 3500 | 0.35% | **nobody — it is the residual** |
 | ref | 1000 | 0.10% | the platform |
-| dev | 1000 | 0.10% | the platform |
 | protocol | 2500 | 0.25% | the protocol admin only |
 | | **10000** | **1.00%** | |
 
-A share whose **address** is zero at swap time — no referrer, no dev — is paid
-to the platform instead, which is the same rule as a zero configured share. The
-platform is the residual claimant throughout, including for the rounding dust
-(at most four wei per fee).
+A share whose **address** is zero at swap time — no referrer — is paid to the
+platform instead, which is the same rule as a zero configured share. The platform
+is the residual claimant throughout, including for the rounding dust (at most
+three wei per fee). `FeeShare` names the four parties as a `FeePaid` /
+`FeeDeferred` log's `share` topic encodes them — `Creator` 0, `Platform` 1, `Ref`
+2, `Protocol` 3 — and `FeeShare.nameOf(topic)` refuses anything else. A zero share
+is not paid and writes no log.
+
+After graduation a pool charges **its own rate on its own split**, which is the
+hook's and not the platform's: 0.80% of the trade (`POOL_TRADE_FEE_BPS`), split
+creator 5000 / platform 1875 / protocol 3125 with no referrer share
+(`POOL_CREATOR_SHARE_BPS` and friends), beside the pool's 0.20% LP fee
+(`POOL_LP_FEE_PIPS`, tick spacing `POOL_TICK_SPACING`) — 1.00% in all
+(`POOL_TOTAL_FEE_BPS`), the same as the curve. Read it off the chain per pool with
+`pool.hookFeeBps()`, `pool.feeConfig()` and `pool.fees()`.
 
 ### Curve templates
 
@@ -531,7 +536,7 @@ wrong by a factor of 1000.
 
 `CurveTemplate` is `{ quoteToken, totalSupply, curveSupply, y0, r0, target,
 initialPrice }` — `r0`, `target` and `initialPrice` in the quote — the tuple
-`arcnow/platform-config@3.x.x` serves per quote; a platform or registry of any other
+`arcnow/platform-config@4.x.x` serves per quote; a platform or registry of any other
 version is refused with `UnknownCurveVersion` before its template is read or anything
 is sent. `hasCurveParameters(platform, quote)` says whether a platform launches in a
 quote at all. `registerPlatform` takes the native template; other quotes are enabled by
@@ -588,12 +593,13 @@ Four things worth knowing:
   transfer fails — and an unspent ERC-20 quote is never pulled. `BuyQuote` carries `refund` and `graduates`, so you can
   see this coming before you send it.
 - **Where it graduates to is the curve's own snapshotted `migrator`**, chosen at
-  launch and immutable. On Arc testnet that is the Uniswap v4 migrator; v2, v3
-  and escrow are not deployed there. **Ask the curve, not a network-wide list.**
+  launch and immutable. On both Arc networks that is the Uniswap v4 migrator; v2,
+  v3 and escrow are not deployed. **Ask the curve, not a network-wide list.**
 
-After migration the same 1% is charged by `ArcNowFeeHook` inside the v4 pool's
-swaps, in the pool's quote currency and in its raw units. Ref and dev have no address in a pool,
-so both shares follow the zero rule to the platform recipient.
+After migration `ArcNowFeeHook` charges the pool's own 0.80% inside the v4 pool's
+swaps, in the pool's quote currency and in its raw units, beside the pool's 0.20%
+LP fee — 1.00% in all, the same as the curve. A pool has no referrer, so the
+hook's split has no referrer share: creator 5000 / platform 1875 / protocol 3125.
 
 ---
 
@@ -619,8 +625,8 @@ await trade.buy({
 
 It is a dispatcher, not an abstraction layer, and it **refuses** rather than
 papering over the places the two venues genuinely differ: `recipient` is
-pool-only (a curve pays `msg.sender` and has no such argument), and `referrer`,
-`developer` and `gasLimit` are curve-only. Passing one to the wrong venue is an
+pool-only (a curve pays `msg.sender` and has no such argument), and `referrer`
+and `gasLimit` are curve-only. Passing one to the wrong venue is an
 `InvalidArgument`, not a silently dropped field — a referrer that is ignored is a
 partner promised a share the chain was never asked for.
 
@@ -654,16 +660,18 @@ No quoter is deployed on Arc, and off-chain tick maths would be wrong anyway: th
 migrator seeds two single-sided positions and anyone may add more. So a quote
 calls the router itself with state overrides standing in for the money — and for
 a sell, for the allowance — and reads back the `BalanceDelta`. **That delta is
-the trader's own, with the hook's 1% already inside it**, which is the whole
+the trader's own, with the hook's 0.80% and the pool's 0.20% LP fee already inside
+it**, which is the whole
 reason it is worth the round trip. A buy quotes on a read-only client with no
 funds anywhere when the quote is native USDC; an ERC-20 buy quote needs `{ from }`
 holding the quote, and overrides only the router's allowance, at the quote's
 `allowanceSlot` from `networks.json`. A sell needs `{ from }` naming a real holder,
 because the allowance is overridden for the call and the balance deliberately is not.
 
-The fee is then derived from the identity on **raw units**, the way the hook computes
-it, not read back: `quoteIn * 1%` on a buy (`buyFeeFromQuoteIn`), and
-`quoteOut * 10000/9900 * 1%` on a sell (`sellFeeFromQuoteOut`).
+The hook's fee is then derived from the identity on **raw units**, the way the hook
+computes it, not read back: `quoteIn * 0.80%` on a buy (`buyFeeFromQuoteIn`), and
+`quoteOut * 10000/9920 * 0.80%` on a sell (`sellFeeFromQuoteOut`). The LP fee is
+inside the price and is not reported as a fee.
 
 ### A filled trade is read out of its own receipt
 
@@ -680,12 +688,12 @@ Why: in v4-core, `beforeSwap` resizes the swap by the hook's specified delta,
 `Swap` is emitted with the **pool's** delta, and only afterwards does `afterSwap`
 subtract the hook's delta from what the router settles. The quote leg is signed from
 the swapper's side, and the hook's fee is always a positive delta on it. A 1 USDC buy
-charged 0.01 logs `−0.99`. A buy's `quote` is read, not assumed to be `quoteIn`. The fork suite holds every `usdc` to the trader's native balance
+charged 0.008 logs `−0.992`. A buy's `quote` is read, not assumed to be `quoteIn`. The fork suite holds every `usdc` to the trader's native balance
 change with the receipt's gas put back, on both sides and for trades too small to
 be charged.
 
 **Fees accrue, and are paid out later.** The hook accrues each fee as an ERC-6909
-claim on the PoolManager and pays it out five ways at the start of the pool's next
+claim on the PoolManager and pays it out three ways at the start of the pool's next
 swap in a **later** transaction, or when anyone calls `distributeFees`.
 `HookFeeTaken` is emitted per swap, so `feeQuote` is the fee this trade was
 charged; a distribution burns and takes the hook's own claim and never touches the
@@ -694,7 +702,10 @@ assuming it.
 
 ```ts
 result.feesDistributed;          // earlier fees this swap paid out (FeesDistributed)
-await pool.hookVersion();        // "arcnow/arc-now-fee-hook@3.0.0"
+await pool.hookVersion();        // "arcnow/arc-now-fee-hook@4.0.0"
+await pool.hookFeeBps();         // 80 bps: the hook's own rate, read off the hook
+await pool.feeConfig();          // creator 5000 / platform 1875 / ref 0 / protocol 3125
+await pool.fees();               // { hookFeeBps: 80, lpFeePips: 2000, totalBps: 100, split }
 await pool.accruedHookFee();     // charged and not yet paid out, in the quote
 await pool.distributeHookFees(); // permissionless payout
 ```
@@ -806,9 +817,10 @@ hook callback, and v4's own detail such as `HookCallFailed`). Only an empty or
 unknown inner reason comes back as `WrappedRevert`.
 
 Three codes guard the one curve: `UnknownCurveVersion` (a curve, platform or
-registry at any major but the multi-quote stack's), `AddressIsNotACurve` (an address
-handed in as a curve that is not one), and `UnknownHookVersion` (a pool whose hook is
-not `arcnow/arc-now-fee-hook@3.x.x`). Two more guard quotes, both raised before
+registry at any major but the fee-model stack's, the retired multi-quote 3.x named as
+such), `AddressIsNotACurve` (an address handed in as a curve that is not one), and
+`UnknownHookVersion` (a pool whose hook is not `arcnow/arc-now-fee-hook@4.x.x`). Two
+more guard quotes, both raised before
 anything is sent: `QuoteTokenMismatch` (an amount in the wrong quote) and
 `QuoteAmountNotRepresentable` (an ERC-20 amount with dust below one raw unit, the same
 name the contracts revert with). `CurveNotPriceable` reports the template's curve
@@ -826,12 +838,13 @@ npm test            # the unit suite: no chain, no Docker, under a second
 ```
 
 Everything that can be proved without a chain: the amount types and the 18/6
-conversions, the network presets and the mainnet refusal, the residual fee
-arithmetic, the shipped curve templates (checked field for field against the
-contracts' pinned `vectors.json`), the error decoding across the pinned ABIs
-including v4's `WrappedError`, the refusal of every curve, platform, registry and
-hook version but `@2.x.x` — the retired `@1.x.x` included — before anything is
-read or sent, and the container hygiene rules of the fork harness.
+conversions, both network presets, the residual fee arithmetic and the pool's own
+rate and split, the shipped curve templates for both networks (checked field for
+field against the contracts' pinned `vectors.json`), the error decoding across the
+pinned ABIs including v4's `WrappedError`, the refusal of every curve, platform,
+registry and hook version but `@4.x.x` — the retired multi-quote `@3.x.x` by name,
+`@2.x.x` and `@1.x.x` — before anything is read or sent, and the container hygiene
+rules of the fork harness.
 
 `CurveMath` is held **to the wei** against `vectors/vectors.json` at the repository
 root (schema 2: every math row, every state replayed, all 504 priced trades, the

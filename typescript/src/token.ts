@@ -199,7 +199,6 @@ export class Token {
       creatorShareBps: Bps.of(config.creatorShareBps),
       platformShareBps: Bps.of(config.platformShareBps),
       refShareBps: Bps.of(config.refShareBps),
-      devShareBps: Bps.of(config.devShareBps),
       protocolShareBps: Bps.of(config.protocolShareBps),
       platformRecipient: config.platformRecipient,
       protocolRecipient: config.protocolRecipient,

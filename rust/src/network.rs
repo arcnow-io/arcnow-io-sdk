@@ -3,7 +3,7 @@
 //!
 //! The presets are `networks.json`, compiled into the crate with `include_str!`
 //! so that a published `arcnow-sdk` carries them and a caller needs no file, no
-//! fetch and no environment variable to reach Arc testnet. The same file is the
+//! fetch and no environment variable to reach Arc testnet or Arc mainnet. The same file is the
 //! source for the TypeScript SDK; the maintainers' pin gate fails if the two
 //! copies drift apart, because two SDKs that each kept their own address list
 //! would eventually disagree about one address, in one language, on one chain,
@@ -17,25 +17,21 @@
 //! the contract, rather than handing back a zero that encodes cleanly and
 //! settles into the void.
 //!
-//! # The mainnet gap, on purpose
+//! # Two live networks, one build
 //!
-//! [`Network::ArcMainnet`] **resolves** — [`Network::config`] finds it, complete
-//! in shape — and **refuses to be used**, with an error naming the contracts
-//! that are missing. That is deliberate and it is the whole reason the entry
-//! exists:
+//! [`Network::ArcTestnet`] (chain 5042002) and [`Network::ArcMainnet`] (chain
+//! 5042) each carry a complete deployment of the same contracts build, at
+//! different addresses, with their own quote tokens and their own curve
+//! template on arcnow.io's platform (see [`crate::CurveTemplate`]). Every
+//! address in both presets came from the contracts' deployment record at the
+//! commit [`NetworkConfig::contracts_commit`] names; nothing here was typed in
+//! from memory, and the maintainers' pin gate holds the two in step.
 //!
-//! * a preset that were simply *absent* gets a caller a "no such network" error,
-//!   which reads as "the SDK is behind" and is worked around by pasting
-//!   addresses from somewhere;
-//! * a preset with *plausible* addresses in it gets them a transaction to an
-//!   account that does not exist;
-//! * a preset that is present, complete in shape and null in every address gets
-//!   them an error that says exactly what is true: nothing is deployed here,
-//!   pass your own addresses if you know better.
-//!
-//! Nobody invents an address to fill it in. When arcnow.io deploys to a mainnet
-//! the values arrive in `networks.json` from the deployment record, with the
-//! contracts commit that produced them.
+//! **Mainnet is real money.** The same code that launches, buys and sells on
+//! testnet does so on mainnet with no further switch: pick the preset, or pass
+//! your own endpoint for it with [`crate::ClientBuilder::rpc_url`], and read
+//! [`NetworkConfig::chain_id`] back before you sign anything you did not mean
+//! to. The client refuses an endpoint whose chain id is not the preset's.
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -53,15 +49,17 @@ const NETWORKS_JSON: &str = include_str!("generated/networks.json");
 /// The preset identifier for Arc testnet.
 pub const ARC_TESTNET: &str = "arc-testnet";
 
-/// The preset identifier for Arc mainnet, which is present and undeployed.
+/// The preset identifier for Arc mainnet.
 pub const ARC_MAINNET: &str = "arc-mainnet";
 
 /// Which deployment to talk to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Network {
-    /// Arc testnet, chain id 5042002. The one deployment that exists.
+    /// Arc testnet, chain id 5042002. Test money; arcnow.io's platform there
+    /// serves the 1,000,000-supply / 50-quote template.
     ArcTestnet,
-    /// Arc mainnet. Resolves, and refuses; see the module documentation.
+    /// Arc mainnet, chain id 5042. Real money; arcnow.io's platform there
+    /// serves the reference 1,000,000,000-supply / 50,000-quote template.
     ArcMainnet,
     /// Addresses and an RPC endpoint of your own.
     ///
@@ -88,9 +86,7 @@ impl Network {
     ///
     /// # Errors
     ///
-    /// [`Error::UnknownNetwork`] for a name that is in no preset. Note that
-    /// `"arc-mainnet"` is *not* this error: it resolves, and fails later when
-    /// something tries to use it.
+    /// [`Error::UnknownNetwork`] for a name that is in no preset.
     pub fn from_id(id: &str) -> Result<Self, Error> {
         match id {
             ARC_TESTNET => Ok(Self::ArcTestnet),
@@ -104,9 +100,9 @@ impl Network {
 
     /// This network's configuration.
     ///
-    /// Always succeeds. Resolving a network and being able to *use* one are two
-    /// different questions, and they have two different answers for
-    /// [`Network::ArcMainnet`]; see [`NetworkConfig::require_deployed`].
+    /// Always succeeds. Whether every contract a call needs is deployed on it
+    /// is a separate question — [`NetworkConfig::require_deployed`] — and both
+    /// presets answer yes.
     #[must_use]
     pub fn config(&self) -> &NetworkConfig {
         match self {
@@ -129,7 +125,8 @@ impl Network {
 pub struct NetworkConfig {
     /// The preset's identifier.
     pub name: String,
-    /// EIP-155 chain id. `None` on a preset for a chain that does not exist yet.
+    /// EIP-155 chain id: 5042002 on Arc testnet, 5042 on Arc mainnet. `None`
+    /// only on a custom configuration that has not said.
     pub chain_id: Option<u64>,
     /// A public JSON-RPC endpoint, if the preset names one.
     ///
@@ -137,10 +134,9 @@ pub struct NetworkConfig {
     /// [`crate::ClientBuilder::rpc_url`] and this is ignored. A public endpoint
     /// is rate-limited and is nobody's production dependency.
     pub rpc_url: Option<String>,
-    /// A block explorer, if one exists.
-    ///
-    /// `None` on Arc testnet, and left `None` rather than guessed: a wrong link
-    /// in an error message is worse than no link.
+    /// A block explorer, if one exists: `https://explorer.arc.io` on Arc
+    /// mainnet. `None` on Arc testnet, and left `None` rather than guessed: a
+    /// wrong link in an error message is worse than no link.
     pub explorer_url: Option<String>,
     /// The block the deployment landed in, for an indexer that wants a start
     /// height rather than genesis.
@@ -179,7 +175,7 @@ pub struct NetworkConfig {
     /// deployed on this chain.
     pub contracts: ContractAddresses,
     /// The build at each of `contracts`' addresses, as the deployed contracts
-    /// answered `VERSION()` — `"arcnow/launchpad@3.0.0"` and so on, keyed by the
+    /// answered `VERSION()` — `"arcnow/bonding-curve@4.0.0"` and so on, keyed by the
     /// `networks.json` contract name. `None` where the address answered nothing.
     #[serde(default)]
     pub contract_versions: BTreeMap<String, Option<String>>,
@@ -348,8 +344,8 @@ impl NetworkConfig {
     /// `contracts.v4Router` in `networks.json`. It is arcnow.io's own
     /// deployment of `UniswapV4Router04` (z0r0z/v4-router, unmodified), bound to
     /// arcnow.io's own `PoolManager` — see [`V4Addresses`] for why arcnow.io
-    /// deploys a router rather than using one already on the chain. It is
-    /// `null` on every preset until that deployment is broadcast.
+    /// deploys a router rather than using one already on the chain. Both
+    /// presets name one; a custom configuration may not.
     ///
     /// # Errors
     /// [`Error::NoRouterDeployed`] when this network names no router.
@@ -396,8 +392,8 @@ impl NetworkConfig {
     /// # Errors
     ///
     /// [`Error::NetworkNotDeployed`], naming every missing contract, when one or
-    /// more of the five required addresses is `null`. This is what
-    /// [`Network::ArcMainnet`] answers.
+    /// more of the six required addresses is `None`. Both presets pass; a
+    /// custom configuration with gaps does not.
     pub fn require_deployed(&self) -> Result<(), Error> {
         let missing = self.contracts.missing_core();
         if missing.is_empty() {
@@ -530,7 +526,8 @@ pub struct ContractAddresses {
     pub v3_migrator: Option<Address>,
     /// Uniswap v4 graduation target. Optional.
     pub v4_migrator: Option<Address>,
-    /// The v4 hook that takes the 1% inside a post-graduation swap. Optional.
+    /// The v4 hook that takes the pool's 0.80% inside a post-graduation swap.
+    /// Optional.
     pub fee_hook: Option<Address>,
     /// `UniswapV4Router04`, deployed by arcnow.io against its own `PoolManager`.
     /// Optional — and while it is `None`, no graduated token can be quoted or
@@ -582,16 +579,33 @@ type CoreContract = (&'static str, fn(&ContractAddresses) -> Option<Address>);
 /// markets.
 ///
 /// So arcnow.io deploys its own copy of `UniswapV4Router04` from z0r0z/v4-router,
-/// unmodified, bound to this manager — `arcnow-io/contracts`
-/// `script/DeployV4Router.s.sol`, CREATE2 with salt zero, which puts it at
-/// `0x139166ee61bb560ff34f05ae4a2b666ad98b9b2e` on Arc testnet. Its address is
-/// [`ContractAddresses::v4_router`], `null` until it is broadcast, and one router
-/// serves every graduated token.
+/// unmodified, bound to this manager — CREATE2 with salt zero, which puts it at
+/// `0x139166ee61bb560ff34f05ae4a2b666ad98b9b2e` on Arc testnet and
+/// `0x4a142209396e7b9ba4c8527ff037fc73452b287f` on Arc mainnet. Its address is
+/// [`ContractAddresses::v4_router`], and one router serves every graduated
+/// token on its chain. On mainnet the manager is the one Uniswap v4
+/// `PoolManager` the chain has, the v4-core release build.
+///
+/// # What every pool costs
+///
+/// `lp_fee` and `tick_spacing` are what the migrator bakes into every pool key
+/// it opens — [`crate::pool::POOL_LP_FEE_PIPS`] (0.20%) and
+/// [`crate::pool::POOL_TICK_SPACING`] — recorded so a reader can see a migrated
+/// trade's whole 1.00% (the hook's 0.80% plus this) without a call. A
+/// particular pool's are read off its key.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct V4Addresses {
     /// The `PoolManager` arcnow.io's v4 migrator opens pools in.
     pub pool_manager: Option<Address>,
+    /// The LP fee of every pool the migrator opens, in hundredths of a basis
+    /// point, where the preset records it.
+    #[serde(default)]
+    pub lp_fee: Option<u32>,
+    /// The tick spacing of every pool the migrator opens, where the preset
+    /// records it.
+    #[serde(default)]
+    pub tick_spacing: Option<i32>,
 }
 
 /// Which graduation venues a deployment actually offers.

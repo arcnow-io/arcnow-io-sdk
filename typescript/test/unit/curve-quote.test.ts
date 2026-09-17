@@ -39,7 +39,7 @@ interface CurveBehaviour {
 function curve(
   quote: Address,
   decimals: number,
-  version = "arcnow/bonding-curve@3.0.0",
+  version = "arcnow/bonding-curve@4.0.0",
   behaviour: CurveBehaviour = {},
 ): FakeContract {
   const trade = (isBuy: boolean, quoteWad: bigint, tokens: bigint, fee: bigint) => ({
@@ -115,7 +115,7 @@ function eurcCurve(allowance: bigint, behaviour: CurveBehaviour = {}) {
     allowances: { [`${BUYER}:${CURVE}`]: allowance },
   });
   const chain = new FakeChain({
-    [CURVE]: curve(EURC_ADDRESS, 6, "arcnow/bonding-curve@3.0.0", behaviour),
+    [CURVE]: curve(EURC_ADDRESS, 6, "arcnow/bonding-curve@4.0.0", behaviour),
     [EURC_ADDRESS]: eurc,
   });
   const client = createArcNowClient({
@@ -188,7 +188,7 @@ describe("buying on an ERC-20 (EURC) curve", () => {
     expect(chain.sends()).toEqual(["curve.buyWithQuote"]);
     expect(chain.sent[0]?.value).toBe(0n);
     expect(chain.sent[0]?.args)
-      .toEqual([10n * WAD, 900n * WAD, deadline.unixSeconds, zeroAddress, zeroAddress]);
+      .toEqual([10n * WAD, 900n * WAD, deadline.unixSeconds, zeroAddress]);
     expect(result.quoteSpent.format()).toBe("10 EURC");
     expect(result.fee.format()).toBe("0.1 EURC");
     expect(result.approvalTxHash).toBeUndefined();
@@ -240,7 +240,7 @@ describe("buying on an ERC-20 (EURC) curve", () => {
     });
     expect(chain.sends()).toEqual(["curve.sell"]);
     expect(chain.sent[0]?.args)
-      .toEqual([500n * WAD, 2n * WAD, deadline.unixSeconds, zeroAddress, zeroAddress]);
+      .toEqual([500n * WAD, 2n * WAD, deadline.unixSeconds, zeroAddress]);
     expect(result.quoteOut.format()).toBe("3 EURC");
     expect((await refusal(() => client.curve(CURVE).sell({
       tokensIn: Tokens.parse("1"), minQuoteOut: Usdc.parse("1"), deadline,

@@ -90,11 +90,6 @@
             "internalType": "uint256"
           },
           {
-            "name": "devShareBps",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
             "name": "protocolShareBps",
             "type": "uint256",
             "internalType": "uint256"
@@ -255,11 +250,6 @@
         "internalType": "uint256"
       },
       {
-        "name": "devShareBps_",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
         "name": "defaultMigrator_",
         "type": "address",
         "internalType": "address"
@@ -393,12 +383,6 @@
       },
       {
         "name": "refShareBps",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "devShareBps",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"

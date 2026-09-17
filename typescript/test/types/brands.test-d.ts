@@ -126,10 +126,21 @@ const platform: NewPlatform = {
   feeRecipient: someAddress,
   creatorShareBps: Bps.of(3000n),
   refShareBps: Bps.of(1000n),
-  devShareBps: Bps.of(1000n),
   defaultMigrator: someAddress,
   curve: someCurve,
   // @ts-expect-error the platform's own cut is the RESIDUAL and is never an input
-  platformShareBps: Bps.of(2500n),
+  platformShareBps: Bps.of(3500n),
 };
 void platform;
+
+const platformWithDeveloper: NewPlatform = {
+  admin: someAddress,
+  feeRecipient: someAddress,
+  creatorShareBps: Bps.of(3000n),
+  refShareBps: Bps.of(1000n),
+  defaultMigrator: someAddress,
+  curve: someCurve,
+  // @ts-expect-error there is no developer share: the fee has four parties
+  devShareBps: Bps.of(1000n),
+};
+void platformWithDeveloper;

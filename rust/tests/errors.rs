@@ -408,8 +408,18 @@ fn an_unknown_fee_hook_version_is_its_own_error() {
     };
     let message = error.to_string();
     assert!(message.contains("arcnow/arc-now-fee-hook@1.0.0"), "{message}");
-    assert!(message.contains("@3.x.x"), "names the one version it accepts: {message}");
+    assert!(message.contains("@4.x.x"), "names the one version it accepts: {message}");
+    assert!(message.contains("0.80%"), "and the rate that hook takes: {message}");
     assert!(message.contains(&ALICE.to_string()), "{message}");
+    assert!(!message.contains("retired multi-quote"), "a 1.x hook is not the v3 one: {message}");
+
+    let retired = Error::UnknownHookVersion {
+        hook: ALICE,
+        version: "arcnow/arc-now-fee-hook@3.0.0".to_owned(),
+    };
+    let message = retired.to_string();
+    assert!(message.contains("retired multi-quote (v3) stack"), "{message}");
+    assert!(message.contains("wiped"), "{message}");
 }
 
 /// A made-up hook address: the decoding is independent of which hook it is.

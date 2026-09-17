@@ -84,7 +84,7 @@ function setup(allowance = 0n, launchpadVersion = "arcnow/launchpad@3.0.0", reve
       label: "platform",
       abi: platformConfigAbi,
       reads: {
-        VERSION: () => "arcnow/platform-config@3.0.0",
+        VERSION: () => "arcnow/platform-config@4.0.0",
         curveParametersFor: ([quote]) => {
           seenTemplates.push(quote as Address);
           return TEMPLATE;

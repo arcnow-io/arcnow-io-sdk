@@ -97,11 +97,6 @@ export const bondingCurveAbi = [
                 "internalType": "uint256"
               },
               {
-                "name": "devShareBps",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
                 "name": "protocolShareBps",
                 "type": "uint256",
                 "internalType": "uint256"
@@ -152,11 +147,6 @@ export const bondingCurveAbi = [
       },
       {
         "name": "ref",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "dev",
         "type": "address",
         "internalType": "address"
       }
@@ -235,11 +225,6 @@ export const bondingCurveAbi = [
       },
       {
         "name": "ref",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "dev",
         "type": "address",
         "internalType": "address"
       }
@@ -324,11 +309,6 @@ export const bondingCurveAbi = [
           },
           {
             "name": "refShareBps",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "devShareBps",
             "type": "uint256",
             "internalType": "uint256"
           },
@@ -467,11 +447,6 @@ export const bondingCurveAbi = [
         "name": "ref",
         "type": "address",
         "internalType": "address"
-      },
-      {
-        "name": "dev",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "outputs": [
@@ -496,11 +471,6 @@ export const bondingCurveAbi = [
             "internalType": "address"
           },
           {
-            "name": "dev",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
             "name": "protocol",
             "type": "address",
             "internalType": "address"
@@ -517,11 +487,6 @@ export const bondingCurveAbi = [
           },
           {
             "name": "refWad",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "devWad",
             "type": "uint256",
             "internalType": "uint256"
           },
@@ -730,16 +695,6 @@ export const bondingCurveAbi = [
         "name": "deadline",
         "type": "uint256",
         "internalType": "uint256"
-      },
-      {
-        "name": "ref",
-        "type": "address",
-        "internalType": "address"
-      },
-      {
-        "name": "dev",
-        "type": "address",
-        "internalType": "address"
       }
     ],
     "outputs": [
@@ -769,6 +724,11 @@ export const bondingCurveAbi = [
         "name": "deadline",
         "type": "uint256",
         "internalType": "uint256"
+      },
+      {
+        "name": "ref",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "outputs": [

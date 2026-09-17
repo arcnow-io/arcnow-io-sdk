@@ -12,6 +12,71 @@ the first one below, is kept as written.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-17
+
+Both SDKs now speak arcnow.io's live fee-model contract stack, on Arc testnet and on
+Arc mainnet. The fee types changed shape, which is why this is a minor release under
+0.x semantics rather than a patch.
+
+### Added
+- **Arc mainnet preset.** `resolveNetwork("arc-mainnet")` in TypeScript and
+  `Network::ArcMainnet` in Rust resolve to the live mainnet deployment: chain `5042`,
+  `https://rpc.mainnet.arc.io`, explorer `https://explorer.arc.io`, deployed at block
+  21,179,866, every contract address from the deployment record, the Uniswap v4 router
+  and PoolManager, and native USDC and EURC (`0xbEf5f6d5…`) as quotes. Mainnet's
+  platform serves the reference curve template (1,000,000,000 supply, 50,000 to
+  graduate), shipped as the `arc-mainnet` snapshot (`CurveTemplate.reference()` /
+  `CurveTemplate::reference()`).
+- **The pool's own fee, exposed.** A graduated pool's hook takes 0.80% of a trade
+  (`POOL_TRADE_FEE_BPS`) beside the pool's 0.20% LP fee (`POOL_LP_FEE_PIPS`, tick
+  spacing `POOL_TICK_SPACING`), 1.00% in all (`POOL_TOTAL_FEE_BPS`) — the same as the
+  curve. The hook splits its fee creator 5000 / platform 1875 / protocol 3125 with no
+  referrer share (`POOL_CREATOR_SHARE_BPS`, `POOL_PLATFORM_SHARE_BPS`,
+  `POOL_PROTOCOL_SHARE_BPS`). Both SDKs read these off the chain per pool:
+  `Pool.hookFeeBps()`, `Pool.feeConfig()` and `Pool.fees()` in TypeScript,
+  `Pool::hook_fee_bps()` and `Pool::fee_config()` in Rust.
+- **`FeeShare`**, the enum a `FeePaid` / `FeeDeferred` log's `share` topic carries:
+  `Creator` 0, `Platform` 1, `Ref` 2, `Protocol` 3. Both SDKs export it; TypeScript's
+  `FeeShare.nameOf(topic)` and Rust's `FeeShare::from_u8` refuse anything else.
+- `NetworkConfig.v4` carries the migrator's `lpFee` and `tickSpacing` on both presets.
+
+### Changed
+- **No developer share.** The trade fee is split four ways — creator, platform,
+  referrer, protocol — and every `devShareBps`, `dev` and `developer` field, argument and
+  option is gone: `FeeConfig`, `FeeSplit`, `NewPlatform`, `PlatformSettings`, the buy and
+  sell requests, `Trade`'s requests, `previewFeeSplit(fee, referrer?)` and
+  `platformShareBps(creator, ref)`. arcnow.io's own split is creator 3000 / ref 1000 /
+  platform 3500 / protocol 2500 bps of the fee: the platform's residual absorbed the
+  developer's 1000.
+- **Pool quotes report the hook's 0.80%**, not 1%: `feeQuote` on every pool buy and sell
+  quote and fill, and the `buyFeeFromQuoteIn` / `sellFeeFromQuoteOut` /
+  `sellQuoteOutFromFee` identities, are at 80 bps on raw units. A trade below 125 raw
+  units of the quote is charged nothing (was 100).
+- **Version gates moved to the fee-model stack**: `arcnow/bonding-curve@4.x.x`,
+  `platform-config@4.x.x`, `platform-registry@4.x.x` and `arc-now-fee-hook@4.x.x` are
+  accepted; the retired multi-quote `@3.x.x` contracts are refused **by name** — they
+  are gone from arcnow.io's networks and the retired testnet stack's data was wiped —
+  and `@2.x.x` and `@1.x.x` are refused as before. `launchpad@3.x.x`,
+  `quote-registry@1.x.x` and `uniswap-v4-migrator@2.x.x` are unchanged.
+- **Launching is free.** The quote registry's launch fee is zero for native USDC and
+  EURC on both networks; the SDKs keep reading it from the registry, and every example,
+  default and message that said 2 USDC now says zero.
+- **`arc-testnet` points at the fee-model stack** deployed at block 62,386,232
+  (launchpad `0x675a7a60…`, platform `0x912898e5…`, quote registry `0x0428b6a3…`, hook
+  `0xd70d5f97…`), with `token-factory@2.0.0` and the 4.0.0 builds above. The retired
+  multi-quote stack's addresses are gone from the presets.
+- The ABIs, vectors and generated bindings are regenerated from arcnow-io/contracts at
+  the commit whose deployment record carries both networks. The vectors' launch quotes
+  moved with the launch fee; the curve maths did not.
+- The READMEs describe both live networks, the four-party split, the pool's 0.80% +
+  0.20% and the free launch; the "mainnet gap" is gone.
+
+### Removed
+- The `cpmm-reference` template entry: the reference template is now the live
+  `arc-mainnet` snapshot.
+- `arc-mainnet` no longer resolves to a refusal. `NetworkNotDeployed` remains for a
+  preset or custom network with nothing deployed on it.
+
 ## [0.1.5] - 2026-09-17
 
 ### Changed

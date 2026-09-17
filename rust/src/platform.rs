@@ -8,29 +8,38 @@
 //! single easiest mistake in the design and the most expensive to find in
 //! production; [`crate::Bps`] carries the same warning on the type.
 //!
+//! # Four parties
+//!
+//! A fee is split between the **creator**, the **platform**, a **referrer**
+//! and the **protocol** — [`FeeShare`], in the contracts' own order. arcnow.io's
+//! own platform splits the curve's 1.00% as creator 3000 / ref 1000 / platform
+//! 3500 / protocol 2500 bps of the fee. There is no developer share: the model
+//! that carried one was retired with the multi-quote (v3) stack, and its 1000
+//! bps fell to the platform, because the platform is what the residual is.
+//!
 //! # The platform's own cut is a residual
 //!
 //! **[`NewPlatform`] has no platform-share field, and that is the point.** A
-//! platform allocates at most 7500 bps across creator, ref and dev, and whatever
-//! it does not allocate is its own share:
+//! platform allocates at most 7500 bps across creator and ref, and whatever it
+//! does not allocate is its own share:
 //!
 //! ```text
-//! platform = 10000 - protocol - creator - ref - dev
+//! platform = 10000 - protocol - creator - ref
 //! ```
 //!
 //! computed on demand, never stored as an input anywhere in the contracts. Two
 //! things fall out of that, both deliberate:
 //!
-//! 1. Setting ref and dev to zero moves those bps to the platform — which is
-//!    *exactly* the rule that applies at swap time when a ref or dev **address**
-//!    is `None`. One rule, stated once.
+//! 1. Setting ref to zero moves those bps to the platform — which is *exactly*
+//!    the rule that applies at swap time when the ref **address** is `None`.
+//!    One rule, stated once.
 //! 2. The 7500 allowance is measured against the protocol's **maximum** share
 //!    (2500), not its current one. So a protocol admin lowering the protocol
 //!    share widens every platform's residual automatically, and no
 //!    protocol-share change within its bounds can invalidate a stored platform
-//!    configuration or stop it launching. The alternative — four explicit shares
-//!    checked against the current protocol share — makes a routine protocol
-//!    change a platform-wide launch outage.
+//!    configuration or stop it launching. The alternative — three explicit
+//!    shares checked against the current protocol share — makes a routine
+//!    protocol change a platform-wide launch outage.
 //!
 //! [`platform_share_bps`] computes the residual without deploying anything, and
 //! [`NewPlatform::validate`] refuses an over-allocation client-side, before a
@@ -49,6 +58,8 @@
 //! supplied address would be accepting a contract that can answer one thing to a
 //! validation call and another to the launch that follows it.
 
+use core::fmt;
+
 use alloy::primitives::{Address, B256};
 use alloy::providers::DynProvider;
 use alloy::sol_types::SolEvent;
@@ -61,15 +72,75 @@ use crate::constants::{CurveTemplate, MAX_PLATFORM_ALLOWANCE_BPS};
 use crate::curve_math;
 use crate::error::Error;
 
-/// A complete, validated five-way split, as one curve and one token snapshotted
-/// it at creation.
+/// Who a fee share is paid to: `IFeeConfig.FeeShare`, in the contracts' order.
 ///
-/// The five bps fields total exactly 10000. `platform_share` is a **residual**,
-/// materialised here so a reader of the snapshot never has to recompute it.
+/// The value a `FeePaid` or `FeeDeferred` log carries in its indexed `share`
+/// topic, so an indexer can attribute a payout without decoding anything else.
+/// `Protocol` is 3: the developer share that sat between `Ref` and `Protocol`
+/// in the retired multi-quote (v3) stack is gone, and every value after it
+/// moved down by one. A share whose amount floors to zero writes no log at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[repr(u8)]
+pub enum FeeShare {
+    /// The token's creator, read off its creator seat at swap time.
+    Creator = 0,
+    /// The platform's own residual — and every unaddressed share.
+    Platform = 1,
+    /// The referrer a curve trade named. A pool has none.
+    Ref = 2,
+    /// The arcnow.io protocol.
+    Protocol = 3,
+}
+
+impl FeeShare {
+    /// The four parties, in enum order.
+    pub const ALL: [Self; 4] = [Self::Creator, Self::Platform, Self::Ref, Self::Protocol];
+
+    /// The party a `share` topic names, or `None` for a value the enum does
+    /// not have.
+    #[must_use]
+    pub const fn from_u8(value: u8) -> Option<Self> {
+        match value {
+            0 => Some(Self::Creator),
+            1 => Some(Self::Platform),
+            2 => Some(Self::Ref),
+            3 => Some(Self::Protocol),
+            _ => None,
+        }
+    }
+}
+
+impl TryFrom<u8> for FeeShare {
+    type Error = u8;
+
+    /// The offending value comes back as the error.
+    fn try_from(value: u8) -> Result<Self, u8> {
+        Self::from_u8(value).ok_or(value)
+    }
+}
+
+impl fmt::Display for FeeShare {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Creator => "creator",
+            Self::Platform => "platform",
+            Self::Ref => "ref",
+            Self::Protocol => "protocol",
+        })
+    }
+}
+
+/// A complete, validated four-way split, as one curve and one token snapshotted
+/// it at creation — or as the fee hook wrote it for a pool.
 ///
-/// Only two recipients live here: creator, ref and dev are resolved *per swap* —
-/// the creator from the token's creator seat, read live, and ref and dev from
-/// the arguments of the trade.
+/// The four bps fields total exactly 10000. On a curve `platform_share` is a
+/// **residual**, materialised here so a reader of the snapshot never has to
+/// recompute it; on a pool it is one of three stated inputs and `ref_share` is
+/// zero (see [`crate::Pool::fee_config`]).
+///
+/// Only two recipients live here: the creator and the referrer are resolved
+/// *per swap* — the creator from the token's creator seat, read live, and the
+/// referrer from the argument of the trade.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FeeConfig {
     /// The creator's share, in bps **of the fee**.
@@ -79,8 +150,6 @@ pub struct FeeConfig {
     pub platform_share: Bps,
     /// The referrer's share, in bps of the fee.
     pub ref_share: Bps,
-    /// The integrating developer's share, in bps of the fee.
-    pub dev_share: Bps,
     /// The protocol's share. Protocol-controlled; a platform cannot change it.
     pub protocol_share: Bps,
     /// Where the platform's own share is sent. Fixed at creation, never zero.
@@ -94,7 +163,6 @@ impl FeeConfig {
         creator: alloy::primitives::U256,
         platform: alloy::primitives::U256,
         ref_share: alloy::primitives::U256,
-        dev: alloy::primitives::U256,
         protocol: alloy::primitives::U256,
         platform_recipient: Address,
         protocol_recipient: Address,
@@ -103,37 +171,46 @@ impl FeeConfig {
             creator_share: Bps::from_u256(creator)?,
             platform_share: Bps::from_u256(platform)?,
             ref_share: Bps::from_u256(ref_share)?,
-            dev_share: Bps::from_u256(dev)?,
             protocol_share: Bps::from_u256(protocol)?,
             platform_recipient,
             protocol_recipient,
         })
     }
 
-    /// The five shares, totalled. Always exactly 10000 on a valid config.
+    /// The four shares, totalled. Always exactly 10000 on a valid config.
     #[must_use]
     pub fn total(&self) -> Bps {
         Bps::of_fee(
             self.creator_share.get()
                 + self.platform_share.get()
                 + self.ref_share.get()
-                + self.dev_share.get()
                 + self.protocol_share.get(),
         )
     }
+
+    /// The share of one party, by [`FeeShare`].
+    #[must_use]
+    pub const fn share(&self, party: FeeShare) -> Bps {
+        match party {
+            FeeShare::Creator => self.creator_share,
+            FeeShare::Platform => self.platform_share,
+            FeeShare::Ref => self.ref_share,
+            FeeShare::Protocol => self.protocol_share,
+        }
+    }
 }
 
-/// One fee, resolved into the five amounts and the five addresses that will
+/// One fee, resolved into the four amounts and the four addresses that will
 /// actually receive them.
 ///
-/// The five amounts total the fee **exactly**, at every size including a fee of
-/// one wei. The four proportional shares are floored and the rounding dust — at
-/// most four wei — lands in `platform_amount`, which is computed as the
+/// The four amounts total the fee **exactly**, at every size including a fee of
+/// one wei. The three proportional shares are floored and the rounding dust — at
+/// most three wei — lands in `platform_amount`, which is computed as the
 /// residual.
 ///
 /// A consequence worth stating: **`platform_share == 0` does not mean the
 /// platform is never paid.** A platform that allocated its whole allowance away
-/// still receives the four floors' worth of dust.
+/// still receives the three floors' worth of dust.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FeeSplit {
     /// The creator's recipient — the token's creator seat, read at swap time.
@@ -142,8 +219,6 @@ pub struct FeeSplit {
     pub platform: Address,
     /// The referrer, or the platform recipient when none was named.
     pub referrer: Address,
-    /// The developer, or the platform recipient when none was named.
-    pub developer: Address,
     /// The protocol's recipient.
     pub protocol: Address,
     /// The creator's amount, in the fee's quote.
@@ -154,25 +229,33 @@ pub struct FeeSplit {
     /// platform, so referral reporting does not silently become platform
     /// revenue.
     pub referrer_amount: QuoteAmount,
-    /// The developer's amount, on the same rule.
-    pub developer_amount: QuoteAmount,
     /// The protocol's amount.
     pub protocol_amount: QuoteAmount,
 }
 
 impl FeeSplit {
-    /// The five amounts, totalled. Equals the fee exactly.
+    /// The four amounts, totalled. Equals the fee exactly.
     ///
     /// # Panics
     ///
-    /// Never for a split this crate built: all five are in the fee's quote.
+    /// Never for a split this crate built: all four are in the fee's quote.
     #[must_use]
     pub fn total(&self) -> QuoteAmount {
         self.creator_amount.clone()
             + self.platform_amount.clone()
             + self.referrer_amount.clone()
-            + self.developer_amount.clone()
             + self.protocol_amount.clone()
+    }
+
+    /// The recipient and amount of one party, by [`FeeShare`].
+    #[must_use]
+    pub fn part(&self, party: FeeShare) -> (Address, &QuoteAmount) {
+        match party {
+            FeeShare::Creator => (self.creator, &self.creator_amount),
+            FeeShare::Platform => (self.platform, &self.platform_amount),
+            FeeShare::Ref => (self.referrer, &self.referrer_amount),
+            FeeShare::Protocol => (self.protocol, &self.protocol_amount),
+        }
     }
 }
 
@@ -184,17 +267,14 @@ impl FeeSplit {
 pub struct NewPlatform {
     /// The platform's first admin. Two-step handover thereafter.
     pub admin: Address,
-    /// Where the platform's own share of the fee goes — and where any creator,
-    /// ref or dev share with no address goes too. Must not be zero.
+    /// Where the platform's own share of the fee goes — and where any creator
+    /// or ref share with no address goes too. Must not be zero.
     pub fee_recipient: Address,
-    /// The creator's share, in bps **of the fee**.
+    /// The creator's share, in bps **of the fee**. arcnow.io's own is 3000.
     pub creator_share_bps: Bps,
     /// The referrer's share, in bps of the fee. Zero sends those bps to the
-    /// platform.
+    /// platform. arcnow.io's own is 1000.
     pub ref_share_bps: Bps,
-    /// The integrating developer's share, in bps of the fee. Zero sends those
-    /// bps to the platform.
-    pub dev_share_bps: Bps,
     /// The migrator this platform's tokens graduate to by default. Must be
     /// registered in the migrator registry.
     pub default_migrator: Address,
@@ -209,20 +289,18 @@ impl NewPlatform {
     ///
     /// # Errors
     ///
-    /// [`Error::FeeSharesExceedAllowance`] when creator + ref + dev exceeds
-    /// 7500 bps, with a message naming the residual the caller is actually
-    /// choosing — which is the number they were reasoning about even if they did
-    /// not write it down.
+    /// [`Error::FeeSharesExceedAllowance`] when creator + ref exceeds 7500 bps,
+    /// with a message naming the residual the caller is actually choosing —
+    /// which is the number they were reasoning about even if they did not write
+    /// it down.
     pub fn validate(&self) -> Result<(), Error> {
-        let requested =
-            self.creator_share_bps.get() + self.ref_share_bps.get() + self.dev_share_bps.get();
+        let requested = self.creator_share_bps.get() + self.ref_share_bps.get();
         if requested <= MAX_PLATFORM_ALLOWANCE_BPS.get() {
             return Ok(());
         }
         Err(Error::FeeSharesExceedAllowance {
             creator: self.creator_share_bps,
             ref_share: self.ref_share_bps,
-            dev: self.dev_share_bps,
             requested: Bps::of_fee(requested),
             allowance: MAX_PLATFORM_ALLOWANCE_BPS,
             residual: format!(
@@ -238,16 +316,11 @@ impl NewPlatform {
     /// See [`platform_share_bps`] for the arithmetic and its caveat.
     #[must_use]
     pub fn platform_share_bps(&self, protocol_share: Bps) -> Bps {
-        platform_share_bps(
-            self.creator_share_bps,
-            self.ref_share_bps,
-            self.dev_share_bps,
-            protocol_share,
-        )
+        platform_share_bps(self.creator_share_bps, self.ref_share_bps, protocol_share)
     }
 }
 
-/// The platform's own cut: `10000 - protocol - creator - ref - dev`.
+/// The platform's own cut: `10000 - protocol - creator - ref`.
 ///
 /// Pure; it deploys nothing and reads nothing. Call it to see your own share
 /// before registering anything.
@@ -259,11 +332,11 @@ impl NewPlatform {
 /// receives is computed from whatever the protocol's share is at the moment of
 /// the launch. Lowering the protocol share can only ever widen this number.
 ///
-/// Returns zero rather than wrapping if the four shares somehow exceed 10000,
+/// Returns zero rather than wrapping if the three shares somehow exceed 10000,
 /// which a validated configuration cannot.
 #[must_use]
-pub fn platform_share_bps(creator: Bps, ref_share: Bps, dev: Bps, protocol_share: Bps) -> Bps {
-    let allocated = protocol_share.get() + creator.get() + ref_share.get() + dev.get();
+pub fn platform_share_bps(creator: Bps, ref_share: Bps, protocol_share: Bps) -> Bps {
+    let allocated = protocol_share.get() + creator.get() + ref_share.get();
     Bps::of_fee(Bps::DENOMINATOR.saturating_sub(allocated))
 }
 
@@ -301,8 +374,8 @@ impl<'a> PlatformRegistry<'a> {
             .map_err(|err| Error::from_contract(err, "reading a platform registry's VERSION()"))
     }
 
-    /// Refuse a registry that is not `arcnow/platform-registry@3.x.x`, whose
-    /// platforms hold one template per quote.
+    /// Refuse a registry that is not `arcnow/platform-registry@4.x.x`, whose
+    /// platforms hold one template per quote and split a fee four ways.
     async fn check_version(&self) -> Result<(), Error> {
         curve_math::check_registry_version(&self.version().await?)
     }
@@ -402,9 +475,9 @@ impl<'a> PlatformRegistry<'a> {
 
     /// The complete fee split a launch on `platform` would snapshot right now.
     ///
-    /// **The single assembly point.** The platform supplies its three allocations
+    /// **The single assembly point.** The platform supplies its two allocations
     /// and its own recipient; the registry supplies the protocol share and
-    /// recipient from its own storage. The result is validated here — five shares
+    /// recipient from its own storage. The result is validated here — four shares
     /// totalling exactly 10000, both fixed recipients non-zero — before it is
     /// returned, so a launch never has to trust either half. It is also what
     /// stops a platform naming itself as the protocol recipient.
@@ -422,7 +495,6 @@ impl<'a> PlatformRegistry<'a> {
             config.creatorShareBps,
             config.platformShareBps,
             config.refShareBps,
-            config.devShareBps,
             config.protocolShareBps,
             config.platformRecipient,
             config.protocolRecipient,
@@ -451,7 +523,7 @@ impl<'a> PlatformRegistry<'a> {
     ///   USDC, before any RPC: a platform is registered with its native
     ///   template.
     /// * [`Error::UnknownCurveVersion`] for a registry that is not
-    ///   `arcnow/platform-registry@3.x.x`, before anything is sent.
+    ///   `arcnow/platform-registry@4.x.x`, before anything is sent.
     /// * [`Error::NotProtocolAdmin`] from the chain.
     /// * [`Error::MigratorNotRegistered`] when the default migrator is not in
     ///   the migrator registry.
@@ -484,7 +556,6 @@ impl<'a> PlatformRegistry<'a> {
                 platform.fee_recipient,
                 platform.creator_share_bps.to_u256(),
                 platform.ref_share_bps.to_u256(),
-                platform.dev_share_bps.to_u256(),
                 platform.default_migrator,
                 crate::bindings::platform_registry::IPlatformConfig::CurveParameters {
                     totalSupplyWad: t.total_supply.to_wad(),
@@ -584,8 +655,8 @@ impl<'a> PlatformConfigHandle<'a> {
 
     /// Where this platform's own share of the fee is sent.
     ///
-    /// Also the destination of any creator, ref or dev share whose address is
-    /// unset at swap time.
+    /// Also the destination of any creator or ref share whose address is unset
+    /// at swap time.
     ///
     /// # Errors
     /// [`Error::Rpc`] if the endpoint fails.
@@ -612,7 +683,7 @@ impl<'a> PlatformConfigHandle<'a> {
 
     /// The complete fee split a launch would snapshot right now.
     ///
-    /// Assembled from this platform's three allocations and its recipient, plus
+    /// Assembled from this platform's two allocations and its recipient, plus
     /// the protocol share and recipient read from the registry. **The protocol
     /// half is not this contract's to supply.**
     ///
@@ -630,7 +701,6 @@ impl<'a> PlatformConfigHandle<'a> {
             config.creatorShareBps,
             config.platformShareBps,
             config.refShareBps,
-            config.devShareBps,
             config.protocolShareBps,
             config.platformRecipient,
             config.protocolRecipient,
@@ -649,7 +719,7 @@ impl<'a> PlatformConfigHandle<'a> {
             .map_err(|err| Error::from_contract(err, "reading a platform's VERSION()"))
     }
 
-    /// Refuse a platform that is not `arcnow/platform-config@3.x.x`, which holds
+    /// Refuse a platform that is not `arcnow/platform-config@4.x.x`, which holds
     /// one template per quote. The version is read once per client.
     async fn check_version(&self) -> Result<(), Error> {
         let version = self.client.version_of(self.address, async { self.version().await }).await?;
@@ -661,7 +731,7 @@ impl<'a> PlatformConfigHandle<'a> {
     /// prices in that quote. [`crate::NATIVE_QUOTE`] for native USDC.
     ///
     /// **The version is read first**, and anything but
-    /// `arcnow/platform-config@3.x.x` is refused.
+    /// `arcnow/platform-config@4.x.x` is refused.
     ///
     /// # Errors
     /// `NoCurveParameters(quote)`, decoded, when the platform has no template
@@ -705,7 +775,7 @@ impl<'a> PlatformConfigHandle<'a> {
     /// [`Error::CurveNotPriceable`], [`Error::InvalidSupplies`] or
     /// [`Error::PoolReserveMismatch`], each naming what it found;
     /// [`Error::UnknownCurveVersion`] for a platform that is not
-    /// `arcnow/platform-config@3.x.x`.
+    /// `arcnow/platform-config@4.x.x`.
     pub async fn check_curve_parameters(&self, template: &CurveTemplate) -> Result<(), Error> {
         self.check_version().await?;
         self.contract()

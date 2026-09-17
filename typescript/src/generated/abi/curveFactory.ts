@@ -127,11 +127,6 @@ export const curveFactoryAbi = [
                 "internalType": "uint256"
               },
               {
-                "name": "devShareBps",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
                 "name": "protocolShareBps",
                 "type": "uint256",
                 "internalType": "uint256"
@@ -287,11 +282,6 @@ export const curveFactoryAbi = [
                 "internalType": "uint256"
               },
               {
-                "name": "devShareBps",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
                 "name": "protocolShareBps",
                 "type": "uint256",
                 "internalType": "uint256"
@@ -408,11 +398,6 @@ export const curveFactoryAbi = [
           },
           {
             "name": "refShareBps",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "devShareBps",
             "type": "uint256",
             "internalType": "uint256"
           },

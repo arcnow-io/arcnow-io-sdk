@@ -107,11 +107,6 @@ export const tokenFactoryAbi = [
                 "internalType": "uint256"
               },
               {
-                "name": "devShareBps",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
                 "name": "protocolShareBps",
                 "type": "uint256",
                 "internalType": "uint256"
@@ -260,11 +255,6 @@ export const tokenFactoryAbi = [
                 "internalType": "uint256"
               },
               {
-                "name": "devShareBps",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
                 "name": "protocolShareBps",
                 "type": "uint256",
                 "internalType": "uint256"
@@ -363,11 +353,6 @@ export const tokenFactoryAbi = [
           },
           {
             "name": "refShareBps",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "devShareBps",
             "type": "uint256",
             "internalType": "uint256"
           },

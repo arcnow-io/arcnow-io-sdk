@@ -79,13 +79,16 @@ pub const MULTICALL3: Address = address!("0xcA11bde05977b3631167028862bE2a173976
 /// assumed; this constant is what the shipped deployment answers.
 pub const TRADE_FEE_BPS: Bps = Bps::of_trade(100);
 
-/// The flat launch fee: 2 USDC.
+/// The flat launch fee: **zero**. Launching is free, in every quote, on both
+/// networks.
 ///
-/// `ArcConstants.LAUNCH_FEE_WAD`. Immutable on the launchpad. Read it from the
-/// chain with [`crate::Launchpad::launch_fee`]; this is the shipped value.
-pub const LAUNCH_FEE_WAD: u128 = 2_000_000_000_000_000_000;
+/// `ArcConstants.LAUNCH_FEE_WAD`. The fee is the quote registry's per quote,
+/// and its admin can set one; read it from the chain with
+/// [`crate::Launchpad::launch_fee`] rather than assume this. This is what
+/// arcnow.io's registries answer for native USDC and for EURC today.
+pub const LAUNCH_FEE_WAD: u128 = 0;
 
-/// The most of the fee a platform may allocate across creator, ref and dev:
+/// The most of the fee a platform may allocate across creator and ref:
 /// 7500 bps.
 ///
 /// `ArcConstants.MAX_PLATFORM_ALLOWANCE_BPS` — `10000 - MAX_PROTOCOL_SHARE_BPS`.
@@ -153,8 +156,10 @@ pub struct CurveTemplate {
 }
 
 impl CurveTemplate {
-    /// arcnow.io's own template, as its platform was serving it when
-    /// `../curve-templates.json` was last read off the chain.
+    /// arcnow.io's own template **on Arc testnet**, as its platform there was
+    /// serving it when `../curve-templates.json` was last read off the chain.
+    /// arcnow.io's mainnet platform serves [`CurveTemplate::reference`]
+    /// instead: the same prices at a thousand times the supply and the target.
     ///
     /// **This is a snapshot, not an authority.** A curve template is
     /// per-platform state and its admin can replace it in one transaction; on
@@ -194,8 +199,9 @@ impl CurveTemplate {
         )
     }
 
-    /// The reference snapshot for a named preset, or `None` where there is no
-    /// deployment to have read one from — `arc-mainnet`, deliberately.
+    /// The snapshot of the template arcnow.io's platform serves on a named
+    /// preset — `arc-testnet` or `arc-mainnet` — or `None` for a name that is
+    /// neither.
     #[must_use]
     pub fn reference_for(network: &str) -> Option<Self> {
         references()
@@ -206,17 +212,20 @@ impl CurveTemplate {
 
     /// arcnow-io/contracts' **reference** template: 1e9 tokens and a 50,000
     /// USDC target, the same prices as [`CurveTemplate::arcnow_defaults`] at a
-    /// thousand times the scale. No live platform serves it.
+    /// thousand times the scale. **arcnow.io's Arc mainnet platform serves it**,
+    /// for native USDC and for EURC alike, so this is what a mainnet launch
+    /// under arcnow.io's own platform gets — as the snapshot was last read; the
+    /// authority is the platform, [`crate::PlatformConfigHandle::curve_parameters_for`].
     ///
     /// # Panics
     ///
     /// Never, in a checkout whose generated file is intact.
     #[must_use]
     pub fn reference() -> Self {
-        references()
-            .get("cpmm-reference")
-            .and_then(ReferenceTemplate::template)
-            .expect("curve-templates.json must carry cpmm-reference; re-run the projection sync")
+        Self::reference_for(crate::network::ARC_MAINNET).expect(
+            "curve-templates.json must carry the arc-mainnet template; run the projection sync \
+             at the repository root",
+        )
     }
 
     /// A template read off the chain, in `quote_token`.

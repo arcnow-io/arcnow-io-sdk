@@ -37,11 +37,6 @@ export const platformConfigAbi = [
         "internalType": "uint256"
       },
       {
-        "name": "devShareBps_",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
         "name": "defaultMigrator_",
         "type": "address",
         "internalType": "address"
@@ -243,19 +238,6 @@ export const platformConfigAbi = [
   },
   {
     "type": "function",
-    "name": "devShareBps",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "feeConfig",
     "inputs": [],
     "outputs": [
@@ -276,11 +258,6 @@ export const platformConfigAbi = [
           },
           {
             "name": "refShareBps",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "devShareBps",
             "type": "uint256",
             "internalType": "uint256"
           },
@@ -488,11 +465,6 @@ export const platformConfigAbi = [
       },
       {
         "name": "refShareBps_",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "devShareBps_",
         "type": "uint256",
         "internalType": "uint256"
       }
@@ -705,12 +677,6 @@ export const platformConfigAbi = [
       },
       {
         "name": "refShareBps",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "devShareBps",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
