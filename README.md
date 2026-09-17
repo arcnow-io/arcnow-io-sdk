@@ -202,16 +202,11 @@ languages. Each entry names its `quote`, its fourth field is `y0Wad`, and the ta
 | `arc-testnet` | arcnow.io's platform: 1,000,000 supply, 79.09% on the curve, 50 USDC target, launch price 0.000016710135998192, graduation 0.000239156382570519 |
 | `cpmm-reference` | the contracts' reference: 1e9 supply, 50,000 USDC target, the same prices; no live platform serves it |
 
-`scripts/check-template.sh` reads `VERSION()` and `curveParametersFor(quote)` off the
-platform `networks.json` names and **fails** on a missing snapshot, a platform that is
-not `platform-config@3.x.x`, or a single wei of drift — except that while `pins.json`
-marks the deployment pending, a `platform-config@2.x.x` platform is **reported** as the
-pre-multi-quote stack rather than compared. A template no platform serves is reported
-as exactly that and checked against the contracts' vectors instead, so it never passes
-by being ignored. The same script reads every ERC-20 quote's `symbol()` and
-`decimals()` back and **fails** when `networks.json` disagrees: a wrong decimals entry
-would mis-scale every raw amount of that quote.
-`scripts/preflight.sh` runs it before anything is compiled.
+The snapshots are checked against the live platform before every release — `VERSION()`
+and `curveParametersFor(quote)` read back off the platform `networks.json` names, a
+single wei of drift a failure — and each entry records the block it was read at. Trust
+the chain over the file all the same: the file says what the platform served then, the
+chain says what it serves now.
 
 ## Selling needs no allowance. Ever.
 
@@ -332,27 +327,32 @@ time.
 
 ## Networks, and the mainnet gap
 
-[`networks.json`](networks.json) is the single source of truth for both languages.
-`scripts/sync-artifacts.sh` projects it into each SDK; `scripts/check-pins.sh` fails
-when a projection drifts. Two SDKs each carrying their own address list would
-eventually disagree about one address, in one language, on one chain, and nothing
-would say which was right.
+[`networks.json`](networks.json) is the single source of truth for both languages: each
+SDK compiles its presets from a byte-identical copy of it, so `resolveNetwork("arc-testnet")`
+in TypeScript and `Network::ArcTestnet.config()` in Rust answer with the same addresses, the
+same quote tokens and the same block. Two SDKs each carrying their own address list
+would eventually disagree about one address, in one language, on one chain, and
+nothing would say which was right.
+
+**As of these releases the presets describe Arc testnet only.** `arc-mainnet` is
+present and every address in it is `null` (why, below); the mainnet preset arrives with
+the next SDK update, once arcnow.io is deployed there.
 
 **`arc-testnet`** is filled in, from the contracts' deployment record, with the
 contracts commit those addresses were deployed from. It lists its **quote tokens**:
 native USDC and EURC, each with symbol, name and decimals, and EURC's
 `allowanceSlot` (10) — the storage slot of its allowance mapping, used only to
 state-override the router's allowance when pricing a pool buy with `eth_call`.
-`quoteRegistry` is `null` until the multi-quote stack is deployed; both SDKs then ask
-the launchpad (`quoteTokenRegistry()`, immutable) instead.
+`quoteRegistry` is the registry that stack was deployed with; both SDKs prefer it and
+fall back to asking the launchpad (`quoteTokenRegistry()`, immutable) when a network
+file leaves it out.
 
 **A network has one stack.** `contracts` (with `contractVersions`, `contractsCommit`
 and `deployedAtBlock`) is arcnow.io's stack on that chain: the one `launchpad`,
 `platforms` and `migrators` talk to, so `migrators.list()` lists exactly the venues a
 launch can pick. `contracts.v4Router` is the router graduated tokens trade through and
-`v4.poolManager` the manager it serves. There is no `legacyStacks` key, and
-`scripts/check-pins.sh` fails if one appears here or in the contracts' deployment
-record.
+`v4.poolManager` the manager it serves. There is no `legacyStacks` key: a network has
+one stack, and an older one is not an alternative, it is retired.
 
 **`arc-mainnet` exists and every address in it is `null`, on purpose.** Arc mainnet is
 not somewhere arcnow.io is deployed. The entry is there rather than absent because
@@ -378,115 +378,35 @@ deployment. `escrowMigrator` being null is the *better* state: it is the one cus
 contract in the system, and arcnow-io/contracts deploys it only where no venue
 migrator could be built at all.
 
-## The ABI pin
+## Where the ABIs come from
 
-The ABIs under [`abi/`](abi/) are **copies**, generated in `arcnow-io/contracts` and
-committed here so that building an SDK needs no Solidity toolchain.
+The ABIs under [`abi/`](abi/) are **copies**, generated in `arcnow-io/contracts` at the
+commit [`pins.json`](pins.json) names and committed here so that building an SDK needs
+no Solidity toolchain. Each SDK compiles against a byte-identical projection of them
+(`rust/src/generated/`, `typescript/src/generated/`), and `pins.json` records the
+commit and the SHA-256 of every ABI and vector file. Before every release the
+maintainers verify those hashes against the contracts repository at that commit and
+`networks.json` against the deployment record, address for address; the fork suites
+then deploy exactly those contracts and trade them. An SDK encodes calls from an ABI,
+and one that stopped describing the bytecode at the addresses in `networks.json`
+would fail quietly weeks later — which is why the pin is checked and not assumed.
 
-A copy that drifts is the quiet failure this pin exists to prevent: an SDK encodes
-calls from an ABI, and if that ABI stops describing the bytecode at the addresses in
-`networks.json`, nothing fails loudly. A selector still hashes. A call still goes out.
-It lands on a function that does something else, or on nothing, and surfaces weeks
-later as a revert nobody can read in somebody else's application.
+## Testing
 
-**One pin.** `abi/*.json` is the multi-quote build, pinned to arcnow-io/contracts
-`327f45b` (the deployed multi-quote stack: #22's frozen ABI, #23's ERC-20 implementation,
-the #24 follow-ups, and #26's deployment record), and a shape check that needs no
-checkout requires its `BondingCurve.json` to have `y0Wad()`, `virtualTokenReserveWad()`,
-`quoteToken()`, `quoteDecimals()`, `quoteScale()`, `targetQuoteWad()` and
-`buyWithQuote()` and no `kWad()`, a `QuoteRegistry.json` with the registry's reads, and
-vectors at `bonding-curve@3`. A second ABI directory beside `abi/external/` fails.
+`cargo test` in `rust/` and `npm test` in `typescript/` run without a chain, a
+container or a key, and prove what can be proved offline: the constant-product maths
+against the contracts' reference vectors ([`vectors/`](vectors/)) to the wei, for every
+launch quote, trade and state replay; every fee and slippage helper rounding exactly
+as the contracts do; every contract revert decoding into a named error; network
+resolution, quote-token labelling and the refusals (mainnet, a null address, a curve
+of another version) against a fake chain that does exactly what each test says.
 
-**The deployment may lag the ABIs, and the pin says so.** `pins.json`
-`contracts.deployment.status` is `deployed` when the pinned ABIs are what is on chain,
-as it is now, and `networks.json`'s `contractsCommit` must then equal the pin. While it
-is `pending` — as it was while the multi-quote ABIs were ahead of the version-2 stack
-deployed from `735db85` — `contractsCommit` must instead equal
-`deployment.deployedCommit`, and the gate prints a warning on every run: the addresses in
-`networks.json` are real, and both SDKs refuse them by `VERSION()`.
-
-[`pins.json`](pins.json) records the commit and the SHA-256 of every ABI and vector
-file. [`scripts/check-pins.sh`](scripts/check-pins.sh) enforces three things:
-
-1. **Always** — every file under `abi/` and `vectors/` still hashes to what
-   `pins.json` records, and the set has the multi-quote curve's shape.
-   Catches a hand-edited ABI. Needs nothing but this checkout.
-2. **Always** — the projections under `rust/src/generated/` and
-   `typescript/src/generated/` are what `abi/` and `networks.json` say they should be.
-   Catches a pin that moved without a re-sync, which would leave `pins.json`
-   describing one set of bytes and both SDKs compiled against another.
-3. **When an `arcnow-io/contracts` checkout is reachable** (`ARCNOW_CONTRACTS_DIR`)
-   — the same files at the pinned commit *in that repository* still hash the same,
-   and `networks.json` matches the deployment record `exports/addresses.json` at
-   `pins.json`'s `addresses.commit`, address for address. This is the only check
-   that can see what the other two cannot: that the recorded hashes belong to the
-   commit named. Without a checkout it is **reported as not run**, never passed
-   silently — a pin check that passes without checking anything is worse than none,
-   because somebody will trust it.
-
-It also says, as a note rather than a failure, when `arcnow-io/contracts` has moved
-past the pin and whether the ABIs changed in the interval. A pin is supposed to lag;
-reading that diff is a person's job.
-
-**Moving the pin is a commit of its own.** Change `contracts.commit`, run
-`scripts/sync-artifacts.sh`, run `scripts/preflight.sh`, and say in the message what
-changed in the ABIs and what it meant for the SDKs. A regenerated ABI that nobody read
-is how an SDK ends up encoding a function that no longer exists.
-
-## Testing, and what a green run is worth
-
-Both SDKs test against an **anvil fork of Arc testnet**, in a container, with the
-multi-quote stack **deployed onto the fork** by
-[`scripts/fork-deploy-stack.sh`](scripts/fork-deploy-stack.sh): the contracts' own
-`DeployWithHook.s.sol`, compiled at the commit `pins.json` pins from a checkout named
-by `ARCNOW_CONTRACTS_DIR`, broadcast with anvil's public development key — and refused
-outright against anything that is not anvil. The live PoolManager, router and EURC
-token are the fork's, inherited. The approach is `arcnow-io/e2e-tests`', and the
-harnesses there are what these were adapted from.
-
-```sh
-./scripts/preflight.sh              # every gate, both languages
-./scripts/preflight.sh --no-chain   # skip the fork; fast loop
-./scripts/preflight.sh --rust       # one language at a time
-```
-
-`scripts/preflight.sh` **is** the gate. `.github/workflows/ci.yml` is
-`workflow_dispatch:` only — the same decision every repository in this org has made,
-for the same reason: the hosted runners are 2 vCPU and were the slowest part of the
-loop. CI is kept and kept correct because it is still the definition of a full
-verification against a clean checkout, which a local run cannot prove.
-
-**What the fork suites do.** Both languages fork Arc testnet at the block `pins.json`
-pins (`chain.fork_block_number`, overridable with `ARCNOW_SDK_FORK_BLOCK`), deploy the
-multi-quote stack with arcnow.io's testnet template and EURC registered, launch a token
-on it, buy and sell it on the curve with local maths, on-chain quote and fill agreeing
-to the wei, graduate it (a launch sent at exactly the 6,200,000 floor migrates in its
-own transaction), and trade its pool through the router under the fee hook — requiring
-every reported quote fill to equal the trader's balance change to the wei, including on
-a swap that pays out an earlier transaction's fee. They list the quote registry, read
-EURC's metadata and allowance slot back off the real token, approve the real EURC
-exactly once and send nothing the second time, and refuse the live version-2 platform
-by name.
-
-**ERC-20 quotes, always.** The pinned contracts implement native USDC and ERC-20
-quotes, so the EURC launch, curve and pool journeys run on every fork run, beside the
-native ones: an exact approve and no value on a EURC launch, the EURC pulled equal to
-the total cost, a EURC curve buy and sell, and a EURC-quoted pool in whichever currency
-order its address gives it, every fill equal to the EURC balance change.
-
-**What a fork cannot prove.** A fork RE-EXECUTES transactions locally with anvil's
-EVM, fetching the state it does not have. So it proves the SDKs against real contract
-bytecode and real chain state, and it proves **nothing about Arc's own execution
-semantics** — blocklisted transfers, EIP-1153, the EIP-7708 system emitter,
-burn-to-zero are Arc's, not anvil's, and a fork will happily disagree with the live
-chain about all of them without saying so. That gap wants a live-smoke layer this
-repository does not have.
-
-**Container hygiene.** Everything either suite starts carries the label
-`io.arcnow.sdk.test=1` and is removed however the run ends — pass, fail, panic,
-Ctrl-C. Nothing is ever removed that does not carry that label: the Docker daemon on a
-development machine is shared, and a test suite that reaps other people's containers
-is a worse problem than a leaked one.
+What they do not prove — that the SDKs launch, trade, graduate and pool-trade a real
+token against the real contracts — the maintainers prove before every release, on an
+anvil fork of Arc testnet with the pinned contracts deployed onto it, in both
+languages, native USDC and EURC, every reported fill equal to the trader's balance
+change to the wei. A fork re-executes with anvil's EVM, so Arc's own execution
+semantics are outside even that; the release notes say what was run.
 
 ## Examples
 

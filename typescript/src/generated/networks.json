@@ -1,8 +1,8 @@
 {
   "$comment": [
     "Network presets for the arcnow.io SDKs. THE single source of truth for",
-    "both languages: scripts/sync-artifacts.sh copies this file into",
-    "rust/src/generated/ and typescript/src/generated/, and scripts/check-pins.sh",
+    "both languages: the maintainers' sync copies this file into",
+    "rust/src/generated/ and typescript/src/generated/, and the maintainers' pin gate",
     "fails when a copy has drifted. Two SDKs that each carried their own address",
     "list would eventually disagree about one address, in one language, on one",
     "chain, and nothing would say which was right.",
@@ -77,7 +77,7 @@
       "$quoteTokensComment": [
         "EURC is Circle's euro stablecoin on Arc testnet: a FiatToken proxy reporting 6 decimals,",
         "blocklistable and pausable by Circle. Its symbol and decimals are read back off the chain by",
-        "scripts/check-template.sh. Whether the registry accepts it is the registry's answer, not this",
+        "the maintainers' template gate. Whether the registry accepts it is the registry's answer, not this",
         "file's: EURC is registered on the deployed stack with a 2 EURC launch fee, and its admin can",
         "deactivate it at any time, so both SDKs ask the registry rather than trust this list.",
         "",

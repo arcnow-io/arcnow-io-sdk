@@ -13,10 +13,10 @@ dist/
 .env.local
 
 # CI checks arcnow-io/contracts out here to verify the ABI pin against its
-# origin. See .github/workflows/ci.yml and scripts/check-pins.sh.
+# origin, for the ABI pin gate.
 .contracts-pin/
 
-# scripts/fork-deploy-stack.sh: the forge build output, cache and broadcast log
+# The fork deployer's forge build output, cache and broadcast log
 # for the contracts stack it deploys onto an anvil fork. ARCNOW_SDK_FORK_CACHE
 # moves it.
 .fork-cache/

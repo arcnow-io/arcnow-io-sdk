@@ -12,13 +12,13 @@
     "0x000...000). r0Wad, targetQuoteWad and initialPriceWad are in that quote's WAD units.",
     "",
     "WHAT EACH ENTRY IS. 'platform' non-null: a snapshot of that live platform, read at readAtBlock,",
-    "which scripts/check-template.sh reads back and FAILS on any difference, and on a platform whose",
+    "which the maintainers' template gate reads back and FAILS on any difference, and on a platform whose",
     "VERSION() is not platform-config@3.x.x. The network's arcnowPlatform must have one. 'platform'",
     "null: a template no live platform serves, shipped as a starting point and checked field by field",
     "against the vectors.json template named by vectorsTemplate, so it is never trusted unchecked.",
     "",
-    "MOVING THIS FILE is a commit of its own: change the values, run scripts/sync-artifacts.sh and",
-    "scripts/check-template.sh, and say what moved on chain. Every wad is a STRING because y0Wad does",
+    "MOVING THIS FILE is a commit of its own: change the values, re-run the sync and",
+    "the template gate, and say what moved on chain. Every wad is a STRING because y0Wad does",
     "not fit in a double and JSON has no integers."
   ],
   "schemaVersion": 4,
@@ -33,7 +33,7 @@
         "",
         "The platform serves the SAME six wads for EURC (read back at the same block), which is why",
         "there is no second entry here: a snapshot per quote would duplicate one template and give",
-        "check-template.sh two chances to disagree with itself. It reads the native one."
+        "the template gate two chances to disagree with itself. It reads the native one."
       ],
       "network": "arc-testnet",
       "platform": "0xa78b737da5758250cc95097425d3d3ba534ea47a",

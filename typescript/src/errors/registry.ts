@@ -10,7 +10,7 @@
  *
  * Built once at module load, from the generated `as const` ABIs and from
  * nothing else. Nothing here is hand-maintained: a contracts release that adds
- * an error appears in this table as soon as `scripts/sync-artifacts.sh` runs.
+ * an error appears in this table as soon as the projection sync runs.
  *
  * @module
  */

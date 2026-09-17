@@ -4,7 +4,7 @@
 //! The presets are `networks.json`, compiled into the crate with `include_str!`
 //! so that a published `arcnow-sdk` carries them and a caller needs no file, no
 //! fetch and no environment variable to reach Arc testnet. The same file is the
-//! source for the TypeScript SDK; `../scripts/check-pins.sh` fails if the two
+//! source for the TypeScript SDK; the maintainers' pin gate fails if the two
 //! copies drift apart, because two SDKs that each kept their own address list
 //! would eventually disagree about one address, in one language, on one chain,
 //! and nothing would say which was right.
@@ -630,7 +630,7 @@ fn presets() -> &'static BTreeMap<String, NetworkConfig> {
         let file: NetworksFile = serde_json::from_str(NETWORKS_JSON).expect(
             "src/generated/networks.json is a generated, pinned file and must parse. If this \
              panics, the projection has drifted from networks.json: run \
-             ../scripts/sync-artifacts.sh and ../scripts/check-pins.sh.",
+             the projection sync and the pin gate.",
         );
         file.networks
     })

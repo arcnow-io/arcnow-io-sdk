@@ -12,6 +12,12 @@ the first one below, is kept as written.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-09-17
+
+### Changed
+- The README is written for people who use the SDKs: install from npm (`@arcnow/sdk`) and crates.io (`arcnow-sdk`), what the offline tests prove, how the network presets are read. The maintainers' notes on pins, gates and releases live outside the published tree.
+- Doc comments, `$comment` fields and error messages no longer refer to maintainer tooling by file name.
+
 ## [0.1.4] - 2026-09-17
 
 - Install the SDKs from npm and crates.io; the public README is the README

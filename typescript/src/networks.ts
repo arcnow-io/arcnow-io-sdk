@@ -2,8 +2,8 @@
  * Network presets, and the deliberate hole where Arc mainnet will go.
  *
  * The addresses come from `src/generated/networks.json`, which is a copy of the
- * repository-root `networks.json` projected in by `scripts/sync-artifacts.sh`
- * and checked by `scripts/check-pins.sh`. It is the single source of truth
+ * repository-root `networks.json`, projected in and hash-checked by the
+ * maintainers' gates. It is the single source of truth
  * shared with the Rust SDK: two SDKs each carrying their own address list would
  * eventually disagree about one address, in one language, on one chain, and
  * nothing would say which was right.

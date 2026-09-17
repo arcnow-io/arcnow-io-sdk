@@ -218,6 +218,6 @@ export type {
  *
  * They are generated copies of `arcnow-io/contracts`' exported artefacts at the
  * commit `pins.json` records, and they are what this package encodes every call
- * with. Never edit them in place: `scripts/check-pins.sh` hashes them.
+ * with. Never edit them in place: the maintainers' pin gate hashes them.
  */
 export * as abi from "./generated/abi/index.js";

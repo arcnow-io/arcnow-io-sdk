@@ -7,7 +7,7 @@
  * and snapshotted onto every curve at launch. A platform moved from a 1e9 supply
  * to 1e6 on 2026-09-13 with every price bit-identical, and a user was shown a
  * figure wrong by 1000x. So the values are not written in TypeScript: they live
- * in `curve-templates.json`, `scripts/check-template.sh` reads the live platform
+ * in `curve-templates.json`, the maintainers' template gate reads the live platform
  * and fails on a difference, and this file checks the parts that need no network
  * — including that the snapshots equal the templates in the contracts' own
  * pinned `vectors.json`.

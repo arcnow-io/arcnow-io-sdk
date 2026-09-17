@@ -6,7 +6,7 @@
     "and the claim-based fee hook): its ABIs are abi/*.json and its vectors vectors/vectors.json, pinned",
     "to the arcnow-io/contracts commit that was DEPLOYED, which networks.json records as contractsCommit.",
     "",
-    "scripts/check-pins.sh enforces, and preflight.sh runs it:",
+    "The maintainers' pin gate enforces, and their preflight runs it:",
     "",
     "  1. ALWAYS - every file under abi/ and vectors/ hashes to what is recorded here; the ABI set has",
     "     the version-2 curve's shape (y0Wad and virtualTokenReserveWad, no kWad) so a set from another",
@@ -15,10 +15,10 @@
     "",
     "  2. WHEN A CONTRACTS CHECKOUT IS PRESENT - the same bytes exist at the pinned commit, and",
     "     networks.json matches the deployment record in exports/addresses.json at 'addresses.commit'.",
-    "     Point at one with ARCNOW_CONTRACTS_DIR; ARCNOW_REQUIRE_CONTRACTS=1 makes a missing one a failure.",
+    "     The gate takes the checkout's path; it can be told to treat a missing one as a failure.",
     "",
     "MOVING A PIN is a commit of its own: change the commit, re-copy from exports/, record the hashes,",
-    "run scripts/sync-artifacts.sh and scripts/preflight.sh, and say what changed in the ABIs."
+    "re-run the sync and the preflight, and say what changed in the ABIs."
   ],
   "schemaVersion": 3,
   "external": {
@@ -101,7 +101,7 @@
       "$comment": [
         "WHETHER THE ABIs ABOVE ARE DEPLOYED. 'deployed' means the pinned ABIs are what is on chain:",
         "networks.json records the addresses of this same build, its contractsCommit equals the pin, and",
-        "check-template.sh compares the live platform's template against curve-templates.json rather than",
+        "the template gate compares the live platform's template against curve-templates.json rather than",
         "reporting it as pre-multi-quote. It was 'pending' while the multi-quote ABIs were ahead of the",
         "version-2 stack deployed from 735db85; the v3 stack was broadcast at block 62,226,550."
       ],
@@ -111,7 +111,7 @@
   "addresses": {
     "$comment": [
       "networks.json against arcnow-io/contracts exports/addresses.json, the deployment record.",
-      "check-pins.sh compares every address (case-insensitively), every contractVersions entry and the",
+      "The pin gate compares every address (case-insensitively), every contractVersions entry and the",
       "deployment block, and fails if either file carries a legacyStacks key: there is one stack. The",
       "SDKs' arcnowPlatform is the record's platform, and the SDKs' deployedAtBlock the record's",
       "deploymentBlock; both are public API in both SDKs. quoteRegistry is compared the same way: the",

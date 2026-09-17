@@ -382,7 +382,7 @@ pub enum Error {
     ///
     /// If this fires against a live arcnow.io deployment it means the ABI pin
     /// and the deployed bytecode have diverged — which is the exact failure
-    /// `../pins.json` and `../scripts/check-pins.sh` exist to prevent.
+    /// `../pins.json` and the maintainers' pin gate exist to prevent.
     #[error(
         "{context}: {message}. This crate's ABIs are pinned to arcnow-io/contracts at the commit \
          in ../pins.json; a decode failure against a live deployment means that pin and the \
@@ -1477,7 +1477,7 @@ fn registry() -> &'static HashMap<Selector, Entry> {
             let abi: JsonAbi = serde_json::from_str(json).unwrap_or_else(|err| {
                 panic!(
                     "src/generated/abi/{name}.json is a generated, pinned file and must parse as \
-                     an ABI: {err}. Run ../scripts/sync-artifacts.sh and ../scripts/check-pins.sh."
+                     an ABI: {err}. Re-run the projection sync and the pin gate."
                 )
             });
             for error in abi.errors.into_values().flatten() {

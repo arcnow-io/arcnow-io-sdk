@@ -70,7 +70,7 @@
 //! `src/generated/networks.json` are copies, pinned by SHA-256 in `../pins.json`
 //! to a commit of `arcnow-io/contracts`, and compiled into the crate so a
 //! published `arcnow-sdk` needs no file, no fetch and no Solidity toolchain.
-//! `../scripts/check-pins.sh` fails if one is edited or goes stale. Do not edit
+//! The maintainers' pin gate fails if one is edited or goes stale. Do not edit
 //! them here; fix them where they are generated and move the pin.
 //!
 //! # Modules

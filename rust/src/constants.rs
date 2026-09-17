@@ -21,9 +21,9 @@
 //!
 //! The template therefore is not written here at all. It lives in
 //! `../curve-templates.json`, projected into `generated/` alongside
-//! `networks.json`, and `../scripts/check-template.sh` reads
+//! `networks.json`, and the maintainers' template gate reads
 //! `curveParametersFor(quote)` off the live platform and **fails** on any difference.
-//! `../scripts/preflight.sh` runs that before it compiles anything.
+//! their preflight runs that before it compiles anything.
 //!
 //! # Prefer the chain to any of it
 //!
@@ -180,7 +180,7 @@ impl CurveTemplate {
     ///
     /// The graduation price is 0.000239156382570519, a 14.31x rise, and the
     /// 209,068.22 tokens held back are exactly what 50 USDC buys at it.
-    /// `../scripts/check-template.sh` reads the live platform and **fails** on
+    /// The maintainers' template gate reads the live platform and **fails** on
     /// any difference.
     ///
     /// # Panics
@@ -190,7 +190,7 @@ impl CurveTemplate {
     pub fn arcnow_defaults() -> Self {
         Self::reference_for(crate::network::ARC_TESTNET).expect(
             "curve-templates.json must carry the arc-testnet template; run \
-             ../scripts/sync-artifacts.sh",
+             the projection sync at the repository root",
         )
     }
 
@@ -213,9 +213,10 @@ impl CurveTemplate {
     /// Never, in a checkout whose generated file is intact.
     #[must_use]
     pub fn reference() -> Self {
-        references().get("cpmm-reference").and_then(ReferenceTemplate::template).expect(
-            "curve-templates.json must carry cpmm-reference; run ../scripts/sync-artifacts.sh",
-        )
+        references()
+            .get("cpmm-reference")
+            .and_then(ReferenceTemplate::template)
+            .expect("curve-templates.json must carry cpmm-reference; re-run the projection sync")
     }
 
     /// A template read off the chain, in `quote_token`.
@@ -260,8 +261,8 @@ impl CurveTemplate {
 }
 
 /// `curve-templates.json`, byte-identical to the copy the TypeScript SDK
-/// carries. Projected by `../scripts/sync-artifacts.sh`; checked against the
-/// chain by `../scripts/check-template.sh`.
+/// carries. Projected from the repository root; checked against the chain by
+/// the maintainers' template gate.
 const CURVE_TEMPLATES_JSON: &str = include_str!("generated/curve-templates.json");
 
 /// One snapshot in `curve-templates.json`. Every wad is a **string**: `y0Wad`
@@ -323,7 +324,7 @@ fn references() -> &'static BTreeMap<String, ReferenceTemplate> {
             .expect(
                 "src/generated/curve-templates.json is a generated, checked file and must \
                  parse. If this panics the projection has drifted: run \
-                 ../scripts/sync-artifacts.sh and ../scripts/check-pins.sh.",
+                 the projection sync and the pin gate.",
             )
             .templates
     })

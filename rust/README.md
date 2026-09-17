@@ -356,8 +356,8 @@ at the last price of 0.000239156382570519. `CurveTemplate::reference()` is the
 contracts' 1e9 / 50,000 USDC reference at the same prices. **Do not re-derive
 either in floating point** — a recomputation is refused by `PlatformConfig` with
 `PoolReserveMismatch`. The values live in `../curve-templates.json`, one copy for
-both SDKs, and `../scripts/check-template.sh` reads the live platform and
-**fails** on any difference.
+both SDKs, checked against the live platform before every release and refused on
+a single wei of drift.
 
 Check a candidate of your own with
 `client.platform(addr).check_curve_parameters(&template)`, which reverts naming
@@ -668,10 +668,7 @@ spending anything, and contains no credential of any kind.
 ## Running the tests
 
 ```bash
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo build --all-targets
-cargo test                       # unit tests; forked tests skip with no Docker
+cargo test                       # no chain, no container, no key
 ```
 
 The unit tests need no chain: the amount types and their decimal conversions, the
@@ -679,68 +676,15 @@ residual fee arithmetic, the network presets, revert decoding and the variant
 collision guard, and the curve's maths against every row of the vector file
 (`tests/vectors.rs`).
 
-`tests/fork.rs` runs the whole journey against the **real Arc testnet
-deployment** on an anvil fork of it, at the block `../pins.json` pins — connect
-and check every address's `VERSION()` against `networks.json`, launch, refuse a
-token read as a curve with `AddressIsNotACurve`, quote a buy locally and on chain
-and have the fill match both to the wei, watch progress move, sell with no
-approval anywhere and assert the allowance is still zero, then drive the curve to
-graduation at `GRADUATION_GAS_LIMIT` and a launch at exactly
-`GRADUATION_GAS_FLOOR`, and assert the refund, the permanent halt and the
-migration.
-
-```bash
-cargo test --test fork -- --nocapture
-ARCNOW_SDK_REQUIRE_DOCKER=1 cargo test --test fork   # a missing daemon is a failure
-ARCNOW_SDK_KEEP_CONTAINERS=1 cargo test --test fork  # leave the fork up to inspect
-ARCNOW_SDK_FORK_URL=https://…  cargo test --test fork # your own endpoint
-```
-
-Without a Docker daemon they **skip, loudly**, because a developer without one
-should not get a red run about somebody else's environment — unless
-`ARCNOW_SDK_REQUIRE_DOCKER=1` is set, because a pipeline that skips its only
-chain tests is a pipeline showing green having tested nothing.
-
-Every container is labelled `io.arcnow.sdk.test=1` with the pid that started it
-and the boot-and-namespace scope that pid means something in, and is removed on
-pass, fail, panic and Ctrl-C. Nothing ever removes a container that does not carry
-all three labels: this machine's Docker daemon is shared.
-
-`tests/pool_fork.rs` is the other half. It launches a token on the fork whose
-initial buy graduates it, so its pool is seeded by the real migrator and carries
-the real `ArcNowFeeHook`. It asserts that a network with no router refuses every
-pool quote and trade with `NoRouterDeployed`. Then it finds arcnow.io's live
-router on the fork — it never deploys one — and asserts that the pinned creation
-bytecode predicts its address and that its runtime codehash is the pinned one.
-The creation bytecode is carried as `tests/fixtures/UniswapV4Router04.creation.hex`,
-pinned by keccak256 and compared against the contracts checkout's copy when
-`ARCNOW_CONTRACTS_DIR`, `../contracts` or `../contracts-router` has one. With that
-router configured it trades the pool:
-
-* Buys and sells fill to the wei of their quotes.
-* Every reported `usdc` equals the trader's native balance change with the
-  receipt's `gasUsed × effectiveGasPrice` put back, to the wei — including a sell
-  whose swap distributes the buy's accrued fee, and a buy and a sell too small to
-  be charged any fee.
-* `fee_usdc` equals the hook's logged `feeWad` exactly; it accrues
-  (`accrued_hook_fee`), the later swap reports it as `fees_distributed`, and a
-  bystander's `distribute_hook_fees` zeroes the accrual.
-* The router's slippage floor and deadline refuse as `PoolSlippageExceeded` and
-  `PoolDeadlineExpired`.
-
-It also overrides `ArcToken._allowance` and reads it back through the ABI, which
-is what makes the storage slot the quote path relies on more than a hopeful
-constant.
-
-```bash
-cargo test --test pool_fork -- --nocapture
-```
-
-**What a fork cannot prove.** It re-executes transactions locally with anvil's
-EVM, so Arc's own execution semantics — blocklisted transfers, EIP-1153, the
-EIP-7708 system emitter, burn-to-zero — are not exercised, and a fork will
-disagree with the live chain about them without saying so. The deferred-payout
-paths are unreachable there for exactly that reason.
+The whole journey against the real contracts — connect and check every address's
+`VERSION()`, launch, quote a buy locally and on chain with the fill matching both
+to the wei, sell with no approval anywhere, graduate at exactly the gas floor, and
+trade the pool through arcnow.io's live router under the fee hook with every
+reported amount equal to the trader's balance change — is run by the maintainers
+before every release, on an anvil fork of Arc testnet with the pinned contracts
+deployed onto it. A fork re-executes with anvil's EVM, so Arc's own execution
+semantics (blocklisted transfers, EIP-1153, the EIP-7708 system emitter,
+burn-to-zero) are outside even that.
 
 ---
 
@@ -750,7 +694,6 @@ The ABIs under `src/generated/abi/` and the presets in
 `src/generated/networks.json` are copies, pinned by SHA-256 in `../pins.json` to
 the `arcnow-io/contracts` commit the deployment was built from, and compiled into
 the crate so a published `arcnow-sdk` carries them and needs no file, no fetch
-and no Solidity toolchain.
-`../scripts/check-pins.sh` fails if one is edited or goes stale.
-
-Do not edit them here. Fix them where they are generated and move the pin.
+and no Solidity toolchain. The maintainers verify every hash against the
+contracts repository before a release; a copy that drifted would be caught there,
+not in your application.

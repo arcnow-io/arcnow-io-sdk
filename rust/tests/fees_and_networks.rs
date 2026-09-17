@@ -119,7 +119,7 @@ fn new_platform_has_no_platform_share_field_and_computes_it_instead() {
 // neither these tests nor the chain's validation could see it.
 //
 // The values now live in ../curve-templates.json, one copy for both languages,
-// and ../scripts/check-template.sh reads curveParameters() off the live platform
+// and the maintainers' template gate reads curveParameters() off the live platform
 // and FAILS on any difference. That script is the gate; these tests check what
 // needs no network.
 // ---------------------------------------------------------------------------

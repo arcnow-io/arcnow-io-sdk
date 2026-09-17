@@ -543,10 +543,9 @@ live read cannot do: seeding a platform of your own. It is arcnow.io's platform'
 target, opening at 0.000016710135998192 and graduating at 0.000239156382570519.
 `CurveTemplate.reference()` is the contracts' 1e9 / 50,000 USDC reference, at the
 same prices. Neither is written in TypeScript — they live in `curve-templates.json`
-at the repository root, projected into `src/generated`, and
-`scripts/check-template.sh` reads `curveParametersFor(quote)` off the live platform and
-**fails** on any difference. `scripts/preflight.sh` runs that before anything
-compiles.
+at the repository root, projected into `src/generated`, and checked against the live
+platform's `curveParametersFor(quote)` before every release, a single wei of drift a
+failure.
 
 **Do not recompute those numbers.** `y0` and `r0` are *placed*, not rounded, so
 that the curve collects its target to the wei as it sells its last token and the
@@ -560,7 +559,8 @@ validator and surfaces the specific failure: `InitialPriceMismatch`,
 `GraduationTargetMismatch`, `CurveNotPriceable`, `InvalidSupplies` or
 `PoolReserveMismatch`. **It cannot tell you a template is current**, only that it
 is self-consistent: the 1e9 template passes it on the live chain today. That is
-why the drift went unseen, and why `check-template.sh` exists.
+why the drift went unseen, and why the snapshots are read back off the chain rather
+than trusted.
 
 ---
 
@@ -823,12 +823,7 @@ npm run typecheck   # tsc --noEmit, and the type-level brand assertions with it
 npm run lint        # eslint (lint and formatting in one tool); lint:fix formats
 npm run build       # tsc -p tsconfig.build.json
 npm test            # the unit suite: no chain, no Docker, under a second
-npm run test:fork   # the forked-chain suite: needs Docker
 ```
-
-`npm run preflight` runs the first four in order.
-
-### The unit suite
 
 Everything that can be proved without a chain: the amount types and the 18/6
 conversions, the network presets and the mainnet refusal, the residual fee
@@ -847,101 +842,13 @@ launch quotes).
 below, and an unused directive fails the type check. That is the only way to
 prove a compile-time refusal.
 
-### The forked-chain suite
-
-An **anvil fork of Arc testnet** in a container (`ghcr.io/foundry-rs/foundry:v1.8.1`,
-pinned in `pins.json`), at the block `pins.json` pins (`ARCNOW_SDK_FORK_BLOCK` overrides
-it), with **the multi-quote stack deployed onto it**: Arc testnet still runs the
-version-2 stack, which this SDK refuses. `test/fork/support/stack.ts` runs
-`scripts/fork-deploy-stack.sh`, which compiles arcnow-io/contracts at the pinned commit
-from `ARCNOW_CONTRACTS_DIR` and broadcasts the contracts' own `DeployWithHook.s.sol`
-with anvil's public development key — refusing any endpoint that is not anvil — then
-sets arcnow.io's testnet template and registers EURC with a EURC template. The suites
-build a custom network from its output; the live PoolManager, router and EURC token are
-inherited from the fork.
-
-`journey.fork.test.ts` reads every deployed address's `VERSION()`, the quote registry
-(native USDC and EURC, with launch fees), the platform's per-quote templates and
-`AddressIsNotACurve` for a token address, then launches a token, quotes and fills a
-buy, sells with no approval anywhere, and drives a curve all the way to graduation —
-asserting that the v4 pool was recorded **in the graduating buy's own receipt**, which
-is the assertion that catches a starved instant migration. Remove the `gasLimit` from
-that one call and a handful of tests fail while the rest still pass; that asymmetry is
-the whole reason the assertion is written that way.
-
-It then does the same graduation **without** a gas limit and asserts the damage
-— the buy succeeds, the refund is right, and the pool is never created — before
-a bystander rescues it with the permissionless `migrate()`.
-
-It does the same for a **launch** whose initial buy alone graduates the curve:
-no `gasLimit` from the caller, and `migratedInThisTransaction` asserted true, and
-again at exactly `GRADUATION_GAS_FLOOR`, with the receipt's `gasUsed` logged.
-
-It asserts that **a revert does not wedge the client**: it reverts a buy on its slippage
-floor from a local signing account, then keeps transacting from the same account and
-checks those later transactions still mine, and that the nonce advanced exactly as many
-times as transactions were mined.
-
-And it exercises **quote tokens** as far as the pinned contracts go: EURC's `symbol()`
-and `decimals()` equal `networks.json`; its allowance slot 10 is pinned by overriding it
-in an `eth_call` and reading it back; `ensureAllowance` approves the real EURC exactly
-once and sends nothing the second time; the live version-2 platform is refused with
-`UnknownCurveVersion`; and an ERC-20 launch is refused **by name**, with no nonce spent,
-because contracts #22 implements native USDC only.
-
-`pool.fork.test.ts` covers the other half of a token's life. It launches a token
-whose initial buy graduates it **on the fork**, and trades that token's pool
-through the live router — whose creation bytecode, deterministic address and
-runtime codehash it checks first. With no router configured every pool quote and
-trade refuses with `NoRouterDeployed`. With the router it reads the key off the migrator
-(native-quoted, so quote-first; the fee hook `arcnow/arc-now-fee-hook@3.0.0`), pins
-**ArcToken allowance storage slot 11** by writing it and reading it back through
-`allowance()`, and then:
-
-- buys 1 USDC exactly as quoted, the buyer's native balance moving by exactly
-  `quote` with the gas put back, and the fee **accruing** — `accruedHookFee` up by
-  exactly the `HookFeeTaken`, no recipient paid;
-- sells half **in a later transaction** to a named payee whose balance moves by
-  exactly the quote, while that swap's `FeesDistributed` pays out exactly the
-  buy's accrual — the fill still exact;
-- sells to self and trades 99 wei both ways, none of it charged, every figure
-  exact;
-- has a bystander call `distributeHookFees`, which pays out the rest and zeroes
-  the accrual.
-
-**EURC, on every run**: a EURC launch (exact approve, no value, the EURC pulled equal
-to the total cost, the creator's fee share credited back in the same transaction), a
-EURC curve buy and sell, and a EURC-quoted token's pool — its key order checked against
-the addresses, every fill equal to the EURC balance change.
-
-anvil is throttled against the upstream (`--compute-units-per-second 60`, with
-retries and a backoff) because the public Arc endpoint rate-limits, and a fork
-fetches state on demand for the whole run — so the 429 arrives mid-run, attached
-to whichever transaction needed a cold account, and reads exactly like a
-contract failure. `ARCNOW_SDK_FORK_URL` points the fork at a different endpoint.
-
-**Docker may be unavailable, and then the suite skips — loudly.** Set
-`ARCNOW_SDK_REQUIRE_DOCKER=1` to make a missing daemon a failure instead, which
-is what CI should do: a skip is right for a developer without a daemon, and is
-exactly how a pipeline shows green having tested nothing.
-
-Every container is labelled `io.arcnow.sdk.test=1` plus a pid and a scope, and
-is removed on pass, fail, unhandled rejection and SIGINT. A sweep only ever
-touches containers carrying that label **and** a pid from its own scope that is
-no longer alive — this machine's Docker daemon is shared with other work, and
-"never touch a container you did not start" is a property of the code here, not
-of a sidecar's configuration. `ARCNOW_SDK_KEEP_CONTAINERS=1` leaves them up for
-inspection.
-
-#### What a fork proves, and what it does not
-
-A fork **re-executes transactions locally with anvil's EVM**. So it proves this
-SDK against the real deployed bytecode, the real registries and the real
-platform config — and it proves **nothing about Arc's own execution semantics**.
-Blocklisted transfers, EIP-1153, the EIP-7708 system emitter and burn-to-zero
-are Arc's, not anvil's, and a fork will happily disagree with the live chain
-about all of them **without saying so**. That gap belongs to a live-smoke layer
-this package does not have.
+What the unit suite cannot prove — that this package launches, trades, graduates
+and pool-trades a real token against the real contracts, native USDC and EURC, every
+reported fill equal to the trader's balance change to the wei — the maintainers prove
+before every release, on an anvil fork of Arc testnet with the pinned contracts
+deployed onto it. A fork re-executes with anvil's EVM, so Arc's own execution
+semantics (blocklisted transfers, EIP-1153, the EIP-7708 system emitter,
+burn-to-zero) are outside even that.
 
 ---
 
@@ -965,9 +872,9 @@ rehearse it against a local fork instead of the public endpoint.
 
 ## Where the ABIs and addresses come from
 
-`src/generated/` is projected in from the repository root by
-`scripts/sync-artifacts.sh` and must never be hand-edited — `scripts/check-pins.sh`
-hashes it. The ABIs are copies of `arcnow-io/contracts`' exported artefacts at
+`src/generated/` is a byte-identical projection of the repository root's `abi/`,
+`networks.json` and `curve-templates.json`, hashed in `pins.json` and never
+hand-edited. The ABIs are copies of `arcnow-io/contracts`' exported artefacts at
 the commit `pins.json` pins, which is the same commit the addresses in
 `networks.json` were deployed from. If those two ever diverge, an encoded call
 succeeds against a selector that does something else, which is the failure the
