@@ -1,11 +1,3 @@
-> **This repository is a published mirror.** Every release of the arcnow.io SDKs
-> lands here as one commit, tagged `vX.Y.Z`, with the release tarballs under
-> [Releases](https://github.com/arcnow-io/arcnow-io-sdk/releases). Issues and pull requests are welcome here;
-> the maintainers' tooling (pin checks against the contracts, the forked-chain
-> suites) is not part of the mirror, so `scripts/` referred to below is absent.
-> Site: [www.arcnow.io](https://www.arcnow.io) - docs:
-> [docs.arcnow.io](https://docs.arcnow.io).
-
 # arcnow.io SDKs
 
 Rust and TypeScript SDKs for [arcnow.io](https://arcnow.io): launch a token, trade
@@ -18,10 +10,15 @@ holds an arcnow.io key or needs arcnow.io's permission. The contracts are on
 path, and an RPC endpoint is the whole dependency. If arcnow.io stopped existing
 tomorrow, everything in this repository would keep working.
 
-| | |
-| --- | --- |
-| [`rust/`](rust/) | `arcnow-sdk`, built on [alloy](https://alloy.rs) |
-| [`typescript/`](typescript/) | `@arcnow/sdk`, built on [viem](https://viem.sh) |
+| | | install |
+| --- | --- | --- |
+| [`rust/`](rust/) | [`arcnow-sdk`](https://crates.io/crates/arcnow-sdk), built on [alloy](https://alloy.rs) | `cargo add arcnow-sdk` |
+| [`typescript/`](typescript/) | [`@arcnow/sdk`](https://www.npmjs.com/package/@arcnow/sdk), built on [viem](https://viem.sh) | `npm install @arcnow/sdk viem` |
+
+Both ship from this repository in one release, tagged `vX.Y.Z` on
+[arcnow-io/arcnow-io-sdk](https://github.com/arcnow-io/arcnow-io-sdk) with the
+tarballs under the GitHub Release. To build from source, clone that repository;
+each package's README says how.
 
 Each has its own README with the full API; this one covers what they share, which
 is everything that matters and a few things that will cost you money if you skip

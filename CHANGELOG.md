@@ -12,6 +12,10 @@ the first one below, is kept as written.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-09-17
+
+- Install the SDKs from npm and crates.io; the public README is the README
+
 ## [0.1.3] - 2026-09-17
 
 - The npm step reads "cannot publish over" as already published

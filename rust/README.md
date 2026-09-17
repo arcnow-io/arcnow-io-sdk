@@ -4,15 +4,26 @@ Launch, trade and read [arcnow.io](https://arcnow.io) bonding-curve tokens on
 [Arc](https://docs.arc.io/), by talking to the contracts over JSON-RPC. No
 arcnow.io backend is involved and none is needed.
 
-**This crate is not published.** `arcnow-sdk` is not on crates.io and nothing has
-claimed the name, so depend on the repository and pin a commit — a floating `main`
-is a dependency that can change under you. Cargo finds the crate inside the
-repository, so the git dependency is all you need:
+Install from crates.io — [`arcnow-sdk`](https://crates.io/crates/arcnow-sdk):
+
+```sh
+cargo add arcnow-sdk
+```
 
 ```toml
 [dependencies]
-arcnow-sdk = { git = "https://github.com/arcnow-io/arcnow-io-sdk", rev = "<commit>" }
+arcnow-sdk = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+```
+
+Every release is tagged `vX.Y.Z` on
+[arcnow-io/arcnow-io-sdk](https://github.com/arcnow-io/arcnow-io-sdk), with the
+`.crate` under its GitHub Release. To build from source, depend on the public
+repository at a tag — never a floating branch, which is a dependency that can
+change under you; Cargo finds the crate inside the repository:
+
+```toml
+arcnow-sdk = { git = "https://github.com/arcnow-io/arcnow-io-sdk", tag = "v0.1.3" }
 ```
 
 Rust `1.97.1`, edition 2024, pinned in `rust-toolchain.toml`. Built on

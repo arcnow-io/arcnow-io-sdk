@@ -5,24 +5,25 @@ Launch, trade and read [arcnow.io](https://arcnow.io) bonding-curve tokens on
 and none is required** — everything here is done by calling the deployed
 contracts directly, with [viem](https://viem.sh).
 
-**This package is not published.** `@arcnow/sdk` is not on npm and nothing has
-claimed the name. It also lives in a subdirectory and its published `files` are the
-compiled output, so a git install does not work either. Clone, build, and depend on
-the directory:
+Install from npm — [`@arcnow/sdk`](https://www.npmjs.com/package/@arcnow/sdk) —
+together with viem, which is a peer of everything here:
 
 ```sh
-git clone https://github.com/arcnow-io/arcnow-io-sdk
+npm install @arcnow/sdk viem
+```
+
+Every release is tagged `vX.Y.Z` on
+[arcnow-io/arcnow-io-sdk](https://github.com/arcnow-io/arcnow-io-sdk), with the
+same tarball under its GitHub Release. The published `files` are the compiled
+output, so a git install does not work; to build from source, clone the public
+repository, build, and depend on the directory (a **link**, so "which SDK am I
+running" is whatever that checkout is):
+
+```sh
+git clone https://github.com/arcnow-io/arcnow-io-sdk sdk
 cd sdk/typescript && npm install && npm run build
+npm install /path/to/sdk/typescript viem   # in your own project
 ```
-
-```sh
-# in your own project
-npm install /path/to/sdk/typescript viem
-```
-
-That path dependency is a **link**, not a copy, so "which SDK am I running" is
-answered by whatever is checked out in that directory. If you depend on it this
-way, do it deliberately — the MCP server, which does the same, pins and hashes it.
 
 Node 22.12 or newer. ESM only.
 
